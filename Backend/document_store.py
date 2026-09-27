@@ -7,7 +7,9 @@ import os
 import json
 import sqlite3
 import uuid
-from datetime import datetime
+import secrets
+import hashlib
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +27,24 @@ def get_connection() -> sqlite3.Connection:
 def init_db():
     with get_connection() as conn:
         conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+            )
+        """)
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS documents (
                 id TEXT PRIMARY KEY,
                 filename TEXT NOT NULL,
@@ -38,7 +58,8 @@ def init_db():
                 content TEXT NOT NULL,
                 summary TEXT,
                 summary_type TEXT,
-                created_at TEXT NOT NULL
+                created_at TEXT NOT NULL,
+                user_id TEXT
             )
         """)
         conn.execute("""
@@ -94,6 +115,12 @@ def init_db():
         if "session_id" not in columns:
             conn.execute("ALTER TABLE chat_history ADD COLUMN session_id TEXT")
 
+        # Migration: Ensure user_id column exists in documents
+        cursor = conn.execute("PRAGMA table_info(documents)")
+        columns = [row["name"] for row in cursor.fetchall()]
+        if "user_id" not in columns:
+            conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT")
+
         # Backfill orphan chat messages into a default session per document
         cursor = conn.execute(
             "SELECT DISTINCT doc_id FROM chat_history WHERE session_id IS NULL OR session_id = ''"
@@ -131,6 +158,127 @@ def init_db():
 init_db()
 
 
+# ==========================================
+# Authentication & User Management
+# ==========================================
+def hash_password(password: str) -> str:
+    """Hashes a password with PBKDF2-HMAC-SHA256 and a random salt."""
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+    return f"{salt}${key.hex()}"
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    """Verifies a plain password against the stored salt$hash."""
+    try:
+        parts = hashed.split("$")
+        if len(parts) != 2:
+            return False
+        salt, key_hex = parts
+        test_key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100000)
+        return secrets.compare_digest(test_key.hex(), key_hex)
+    except Exception:
+        return False
+
+
+def create_user(name: str, email: str, password: str) -> Dict[str, Any]:
+    """Registers a new user."""
+    email_clean = email.strip().lower()
+    name_clean = name.strip()
+    if not name_clean:
+        raise ValueError("Name is required")
+    if not email_clean or "@" not in email_clean:
+        raise ValueError("A valid email address is required")
+    if not password or len(password) < 6:
+        raise ValueError("Password must be at least 6 characters")
+
+    user_id = str(uuid.uuid4())
+    pw_hash = hash_password(password)
+    created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection() as conn:
+        cur = conn.execute("SELECT id FROM users WHERE email = ?", (email_clean,))
+        if cur.fetchone():
+            raise ValueError("An account with this email already exists")
+
+        conn.execute(
+            "INSERT INTO users (id, name, email, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+            (user_id, name_clean, email_clean, pw_hash, created_at),
+        )
+        conn.commit()
+
+    return {"id": user_id, "name": name_clean, "email": email_clean, "created_at": created_at}
+
+
+def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
+    """Authenticates email & password, returning user info without password."""
+    email_clean = email.strip().lower()
+    with get_connection() as conn:
+        cur = conn.execute(
+            "SELECT id, name, email, password_hash, created_at FROM users WHERE email = ?",
+            (email_clean,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        if not verify_password(password, row["password_hash"]):
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "email": row["email"],
+            "created_at": row["created_at"],
+        }
+
+
+def create_session(user_id: str, days: int = 30) -> str:
+    """Creates a persistent login session token."""
+    token = secrets.token_urlsafe(32)
+    now = datetime.now()
+    created_at = now.strftime("%Y-%m-%d %H:%M:%S")
+    expires_at = (now + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO user_sessions (token, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+            (token, user_id, created_at, expires_at),
+        )
+        conn.commit()
+    return token
+
+
+def get_user_by_session(token: str) -> Optional[Dict[str, Any]]:
+    """Retrieves user info for an active session token."""
+    if not token:
+        return None
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_connection() as conn:
+        cur = conn.execute(
+            """
+            SELECT u.id, u.name, u.email, u.created_at
+            FROM user_sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.token = ? AND s.expires_at > ?
+            """,
+            (token, now_str),
+        )
+        row = cur.fetchone()
+        if row:
+            return dict(row)
+        return None
+
+
+def delete_session(token: str) -> bool:
+    """Logs out by invalidating session token."""
+    if not token:
+        return False
+    with get_connection() as conn:
+        conn.execute("DELETE FROM user_sessions WHERE token = ?", (token,))
+        conn.commit()
+    return True
+
+
+
 def save_document(
     doc_id: str,
     filename: str,
@@ -139,6 +287,7 @@ def save_document(
     content: str,
     chunk_count: int,
     page_count: int = 1,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     char_count = len(content)
     word_count = len(content.split())
@@ -149,8 +298,8 @@ def save_document(
         conn.execute(
             """
             INSERT OR REPLACE INTO documents 
-            (id, filename, file_type, file_size, char_count, word_count, chunk_count, page_count, preview, content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, filename, file_type, file_size, char_count, word_count, chunk_count, page_count, preview, content, created_at, user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 doc_id,
@@ -164,6 +313,7 @@ def save_document(
                 preview,
                 content,
                 created_at,
+                user_id,
             ),
         )
         conn.commit()
@@ -179,18 +329,30 @@ def save_document(
         "page_count": page_count,
         "preview": preview,
         "created_at": created_at,
+        "user_id": user_id,
     }
 
 
-def list_documents() -> List[Dict[str, Any]]:
+def list_documents(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     with get_connection() as conn:
-        cursor = conn.execute(
-            """
-            SELECT id, filename, file_type, file_size, char_count, word_count, chunk_count, page_count, preview, summary, created_at
-            FROM documents
-            ORDER BY created_at DESC
-            """
-        )
+        if user_id:
+            cursor = conn.execute(
+                """
+                SELECT id, filename, file_type, file_size, char_count, word_count, chunk_count, page_count, preview, summary, created_at, user_id
+                FROM documents
+                WHERE user_id = ? OR user_id IS NULL
+                ORDER BY created_at DESC
+                """,
+                (user_id,),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                SELECT id, filename, file_type, file_size, char_count, word_count, chunk_count, page_count, preview, summary, created_at, user_id
+                FROM documents
+                ORDER BY created_at DESC
+                """
+            )
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
 
@@ -216,13 +378,20 @@ def update_summary(doc_id: str, summary: str, summary_type: str = "bullet") -> N
         conn.commit()
 
 
-def delete_document(doc_id: str) -> bool:
+def delete_document(doc_id: str, user_id: Optional[str] = None) -> bool:
     with get_connection() as conn:
-        cursor = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        if user_id:
+            cursor = conn.execute(
+                "DELETE FROM documents WHERE id = ? AND (user_id = ? OR user_id IS NULL)",
+                (doc_id, user_id),
+            )
+        else:
+            cursor = conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
         conn.execute("DELETE FROM chat_sessions WHERE doc_id = ?", (doc_id,))
         conn.execute("DELETE FROM chat_history WHERE doc_id = ?", (doc_id,))
         conn.commit()
         return cursor.rowcount > 0
+
 
 
 # ==========================================

@@ -3,7 +3,7 @@ import sys
 import uuid
 import re
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -85,10 +85,11 @@ def serve_index():
 
 @app.get("/api/health")
 @app.get("/health")
-def health_check():
+def health_check(request: Request):
     """Confirms the server, vector store, and Gemini configuration status."""
     has_api_key = bool(os.environ.get("GEMINI_API_KEY"))
-    docs_count = len(document_store.list_documents())
+    user = get_user_from_request(request)
+    docs_count = len(document_store.list_documents(user_id=user["id"] if user else None))
     return {
         "status": "ok",
         "gemini_configured": has_api_key,
@@ -98,13 +99,88 @@ def health_check():
 
 
 # ==========================================
+# User Authentication Endpoints
+# ==========================================
+def get_user_from_request(request: Request) -> Optional[dict]:
+    """Extracts bearer token and resolves the authenticated user."""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    token = auth_header[7:].strip()
+    return document_store.get_user_by_session(token)
+
+
+class RegisterRequest(BaseModel):
+    name: str
+    email: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@app.post("/api/auth/register")
+def register_user(req: RegisterRequest):
+    """Creates a new user account and returns a login session token."""
+    try:
+        user = document_store.create_user(req.name, req.email, req.password)
+        token = document_store.create_session(user["id"])
+        return {
+            "status": "ok",
+            "token": token,
+            "user": user,
+            "message": "Account created successfully.",
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Failed to create account.")
+
+
+@app.post("/api/auth/login")
+def login_user(req: LoginRequest):
+    """Verifies credentials and returns a session token."""
+    user = document_store.authenticate_user(req.email, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    token = document_store.create_session(user["id"])
+    return {
+        "status": "ok",
+        "token": token,
+        "user": user,
+        "message": "Logged in successfully.",
+    }
+
+
+@app.get("/api/auth/me")
+def get_authenticated_user(request: Request):
+    """Validates the current session token and returns user profile."""
+    user = get_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Session expired or invalid. Please sign in.")
+    return {"status": "ok", "user": user}
+
+
+@app.post("/api/auth/logout")
+def logout_user(request: Request):
+    """Revokes the current session token."""
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        document_store.delete_session(token)
+    return {"status": "ok", "message": "Logged out successfully."}
+
+
+# ==========================================
 # Document Management & Upload Endpoints
 # ==========================================
 
 
 @app.post("/upload")
 @app.post("/api/upload")
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(request: Request, file: UploadFile = File(...)):
     """
     Uploads a document (PDF, DOCX, TXT, MD, CSV, JSON),
     extracts content, generates semantic chunks, embeds them into ChromaDB,
@@ -138,6 +214,10 @@ async def upload_document(file: UploadFile = File(...)):
             status_code=500, detail=f"Failed to index document chunks into vector database: {str(e)}"
         )
 
+    # Identify user if authenticated
+    user = get_user_from_request(request)
+    user_id = user["id"] if user else None
+
     # Persist in SQLite
     file_size = len(file_bytes)
     ext = os.path.splitext(file.filename)[1].lower()
@@ -149,6 +229,7 @@ async def upload_document(file: UploadFile = File(...)):
         content=text,
         chunk_count=len(chunks),
         page_count=page_count,
+        user_id=user_id,
     )
 
     return {
@@ -158,9 +239,11 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @app.get("/api/documents")
-def get_documents():
-    """Returns list of all uploaded documents."""
-    return document_store.list_documents()
+def get_documents(request: Request):
+    """Returns list of uploaded documents for the authenticated user."""
+    user = get_user_from_request(request)
+    user_id = user["id"] if user else None
+    return document_store.list_documents(user_id=user_id)
 
 
 @app.get("/api/documents/{doc_id}")
@@ -173,15 +256,18 @@ def get_document_details(doc_id: str):
 
 
 @app.delete("/api/documents/{doc_id}")
-def delete_document_endpoint(doc_id: str):
+def delete_document_endpoint(doc_id: str, request: Request):
     """Deletes a document from the database and deletes its vectors from ChromaDB."""
+    user = get_user_from_request(request)
+    user_id = user["id"] if user else None
     doc = document_store.get_document(doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found.")
 
     delete_chunks(doc_id)
-    document_store.delete_document(doc_id)
+    document_store.delete_document(doc_id, user_id=user_id)
     return {"status": "ok", "message": f"Document '{doc['filename']}' deleted successfully."}
+
 
 
 # ==========================================

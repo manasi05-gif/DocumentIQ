@@ -78,20 +78,40 @@
       </div>
     </div>
 
-    <!-- Active Document Status & API Indicator -->
-    <div class="flex items-center space-x-4">
+    <!-- Active Document Status, API Indicator & User Profile -->
+    <div class="flex items-center space-x-3 sm:space-x-4">
       <div id="activeDocBadge" class="hidden items-center space-x-2 px-3 py-1.5 rounded-lg bg-dark-surface border border-dark-border text-xs text-slate-300">
         <i data-lucide="file-text" class="w-3.5 h-3.5 text-brand-400"></i>
-        <span id="activeDocName" class="font-medium max-w-[150px] truncate">Document</span>
+        <span id="activeDocName" class="font-medium max-w-[130px] truncate">Document</span>
         <button id="closeActiveDocBtn" title="Deselect" class="text-slate-400 hover:text-white ml-1">
           <i data-lucide="x" class="w-3.5 h-3.5"></i>
         </button>
       </div>
 
-      <div class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+      <div class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span id="systemStatus">Gemini 3.8 / Flash</span>
       </div>
+
+      <!-- Authenticated User Profile & Logout -->
+      <div id="userProfileArea" class="hidden items-center space-x-2">
+        <div class="flex items-center space-x-2 px-2.5 py-1.5 rounded-lg bg-dark-surface border border-dark-border text-xs">
+          <div id="userAvatar" class="w-6 h-6 rounded-full bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center text-white font-bold text-[11px] shadow-sm">
+            U
+          </div>
+          <span id="userNameDisplay" class="font-semibold text-slate-200 max-w-[100px] truncate">User</span>
+        </div>
+        <button id="logoutBtn" title="Sign Out" class="flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-dark-surface hover:bg-red-500/10 border border-dark-border hover:border-red-500/30 text-slate-400 hover:text-red-400 text-xs font-medium transition-all">
+          <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          <span class="hidden md:inline">Logout</span>
+        </button>
+      </div>
+
+      <!-- Open Auth Modal Button (if logged out) -->
+      <button id="openAuthModalBtn" class="hidden items-center space-x-1.5 px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold shadow-md shadow-brand-500/20 transition-all">
+        <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+        <span>Sign In</span>
+      </button>
     </div>
   </header>
 
@@ -1305,12 +1325,144 @@
     </div>
   </div>
 
+  <!-- AUTHENTICATION MODAL (LOGIN & CREATE ACCOUNT) -->
+  <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-dark-bg/85 backdrop-blur-xl p-4 overflow-y-auto transition-opacity duration-300">
+    <div class="relative w-full max-w-md bg-dark-card border border-dark-border/80 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-brand-500/10">
+      
+      <!-- Logo & Header -->
+      <div class="text-center mb-6">
+        <div class="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-purple-400 items-center justify-center shadow-lg shadow-brand-500/25 mb-3">
+          <i data-lucide="sparkles" class="w-7 h-7 text-white"></i>
+        </div>
+        <h2 class="text-2xl font-bold tracking-tight text-white">DocumentIQ</h2>
+        <p class="text-xs text-slate-400 mt-1">Smart Document Q&A, Multi-Style Summaries & Study AI</p>
+      </div>
+
+      <!-- Tab Switcher -->
+      <div class="flex p-1 bg-dark-surface rounded-xl border border-dark-border mb-6">
+        <button id="authTabLogin" type="button" class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-brand-600 text-white shadow-sm">
+          Sign In
+        </button>
+        <button id="authTabRegister" type="button" class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 hover:text-white">
+          Create Account
+        </button>
+      </div>
+
+      <!-- SIGN IN FORM -->
+      <form id="loginForm" class="space-y-4">
+        <!-- Error Alert -->
+        <div id="loginError" class="hidden p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center space-x-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+          <span id="loginErrorText">Invalid credentials</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="mail" class="w-4 h-4"></i>
+            </span>
+            <input type="email" id="loginEmail" required placeholder="name@example.com" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="lock" class="w-4 h-4"></i>
+            </span>
+            <input type="password" id="loginPassword" required placeholder="••••••••" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+            <button type="button" id="toggleLoginPassword" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="loginSubmitBtn" class="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center space-x-2">
+          <span id="loginBtnText">Sign In</span>
+          <i id="loginBtnIcon" data-lucide="arrow-right" class="w-4 h-4"></i>
+          <span id="loginBtnSpinner" class="hidden animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+        </button>
+
+        <p class="text-center text-xs text-slate-400 pt-2">
+          Don't have an account? 
+          <button type="button" id="switchToRegister" class="text-brand-400 hover:text-brand-300 font-semibold ml-1">Create one</button>
+        </p>
+      </form>
+
+      <!-- CREATE ACCOUNT FORM -->
+      <form id="registerForm" class="space-y-4 hidden">
+        <!-- Error & Success Alerts -->
+        <div id="registerError" class="hidden p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center space-x-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+          <span id="registerErrorText">Registration error</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Full Name</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="user" class="w-4 h-4"></i>
+            </span>
+            <input type="text" id="registerName" required placeholder="John Doe" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="mail" class="w-4 h-4"></i>
+            </span>
+            <input type="email" id="registerEmail" required placeholder="name@example.com" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Password</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="lock" class="w-4 h-4"></i>
+            </span>
+            <input type="password" id="registerPassword" required minlength="6" placeholder="Min. 6 characters" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-10 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+            <button type="button" id="toggleRegisterPassword" class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200">
+              <i data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-300 mb-1.5">Confirm Password</label>
+          <div class="relative">
+            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i data-lucide="shield-check" class="w-4 h-4"></i>
+            </span>
+            <input type="password" id="registerPasswordConfirm" required minlength="6" placeholder="Re-enter password" class="w-full bg-dark-surface border border-dark-border focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl pl-10 pr-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 outline-none transition-all">
+          </div>
+        </div>
+
+        <button type="submit" id="registerSubmitBtn" class="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-indigo-600 hover:from-brand-500 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-brand-500/25 transition-all flex items-center justify-center space-x-2">
+          <span id="registerBtnText">Create Account</span>
+          <i id="registerBtnIcon" data-lucide="user-plus" class="w-4 h-4"></i>
+          <span id="registerBtnSpinner" class="hidden animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></span>
+        </button>
+
+        <p class="text-center text-xs text-slate-400 pt-2">
+          Already have an account? 
+          <button type="button" id="switchToLogin" class="text-brand-400 hover:text-brand-300 font-semibold ml-1">Sign In</button>
+        </p>
+      </form>
+
+    </div>
+  </div>
+
   <!-- Notification Toast -->
   <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 px-4 py-3 rounded-xl border text-xs font-medium shadow-2xl flex items-center space-x-2">
     <i id="toastIcon" data-lucide="check-circle" class="w-4 h-4"></i>
     <span id="toastMsg">Notification message</span>
   </div>
 
-  <script src="/static/app.js?v=8.1"></script>
+  <script src="/static/app.js?v=9.0"></script>
 </body>
 </html>

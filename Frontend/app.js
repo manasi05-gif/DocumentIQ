@@ -21,6 +21,10 @@ const state = {
   isGenerating: false,
   activeDomain: localStorage.getItem('doc_domain') || 'general',
 
+  // Authentication State
+  currentUser: null,
+  authToken: localStorage.getItem('doc_auth_token') || null,
+
   // Chat Sessions State
   activeSessionId: null,
   activeSessionTitle: 'New Chat',
@@ -471,6 +475,262 @@ const toast = document.getElementById('toast');
 const toastMsg = document.getElementById('toastMsg');
 const toastIcon = document.getElementById('toastIcon');
 
+// Auth DOM Elements
+const authModal = document.getElementById('authModal');
+const authTabLogin = document.getElementById('authTabLogin');
+const authTabRegister = document.getElementById('authTabRegister');
+const loginForm = document.getElementById('loginForm');
+const registerForm = document.getElementById('registerForm');
+const loginError = document.getElementById('loginError');
+const loginErrorText = document.getElementById('loginErrorText');
+const registerError = document.getElementById('registerError');
+const registerErrorText = document.getElementById('registerErrorText');
+const loginEmail = document.getElementById('loginEmail');
+const loginPassword = document.getElementById('loginPassword');
+const registerName = document.getElementById('registerName');
+const registerEmail = document.getElementById('registerEmail');
+const registerPassword = document.getElementById('registerPassword');
+const registerPasswordConfirm = document.getElementById('registerPasswordConfirm');
+const loginSubmitBtn = document.getElementById('loginSubmitBtn');
+const loginBtnText = document.getElementById('loginBtnText');
+const loginBtnIcon = document.getElementById('loginBtnIcon');
+const loginBtnSpinner = document.getElementById('loginBtnSpinner');
+const registerSubmitBtn = document.getElementById('registerSubmitBtn');
+const registerBtnText = document.getElementById('registerBtnText');
+const registerBtnIcon = document.getElementById('registerBtnIcon');
+const registerBtnSpinner = document.getElementById('registerBtnSpinner');
+const userProfileArea = document.getElementById('userProfileArea');
+const userAvatar = document.getElementById('userAvatar');
+const userNameDisplay = document.getElementById('userNameDisplay');
+const logoutBtn = document.getElementById('logoutBtn');
+const openAuthModalBtn = document.getElementById('openAuthModalBtn');
+const switchToRegister = document.getElementById('switchToRegister');
+const switchToLogin = document.getElementById('switchToLogin');
+const toggleLoginPassword = document.getElementById('toggleLoginPassword');
+const toggleRegisterPassword = document.getElementById('toggleRegisterPassword');
+
+// Helper to get auth header
+function getAuthHeaders(headers = {}) {
+  if (state.authToken) {
+    headers['Authorization'] = `Bearer ${state.authToken}`;
+  }
+  return headers;
+}
+
+// Authentication Logic
+async function initAuth() {
+  if (state.authToken) {
+    try {
+      const res = await fetch('/api/auth/me', {
+        headers: getAuthHeaders(),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        state.currentUser = data.user;
+        updateUserUI();
+        return true;
+      }
+    } catch (err) {
+      console.warn('Auth check error:', err);
+    }
+    // Token invalid or expired
+    state.authToken = null;
+    state.currentUser = null;
+    localStorage.removeItem('doc_auth_token');
+  }
+
+  updateUserUI();
+  return false;
+}
+
+function updateUserUI() {
+  if (state.currentUser) {
+    if (userProfileArea) {
+      userProfileArea.classList.remove('hidden');
+      userProfileArea.classList.add('flex');
+    }
+    if (openAuthModalBtn) openAuthModalBtn.classList.add('hidden');
+    if (userNameDisplay) userNameDisplay.textContent = state.currentUser.name || 'User';
+    if (userAvatar) {
+      const initial = (state.currentUser.name || 'U').trim().charAt(0).toUpperCase();
+      userAvatar.textContent = initial || 'U';
+    }
+    if (authModal) authModal.classList.add('hidden');
+  } else {
+    if (userProfileArea) {
+      userProfileArea.classList.add('hidden');
+      userProfileArea.classList.remove('flex');
+    }
+    if (openAuthModalBtn) openAuthModalBtn.classList.remove('hidden');
+    if (authModal) authModal.classList.remove('hidden');
+  }
+}
+
+function switchAuthTab(tab) {
+  if (tab === 'login') {
+    if (authTabLogin) {
+      authTabLogin.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-brand-600 text-white shadow-sm';
+    }
+    if (authTabRegister) {
+      authTabRegister.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 hover:text-white';
+    }
+    if (loginForm) loginForm.classList.remove('hidden');
+    if (registerForm) registerForm.classList.add('hidden');
+  } else {
+    if (authTabRegister) {
+      authTabRegister.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition-all bg-brand-600 text-white shadow-sm';
+    }
+    if (authTabLogin) {
+      authTabLogin.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition-all text-slate-400 hover:text-white';
+    }
+    if (registerForm) registerForm.classList.remove('hidden');
+    if (loginForm) loginForm.classList.add('hidden');
+  }
+
+  if (loginError) loginError.classList.add('hidden');
+  if (registerError) registerError.classList.add('hidden');
+}
+
+function togglePassword(inputEl, btnEl) {
+  if (!inputEl) return;
+  const isPass = inputEl.type === 'password';
+  inputEl.type = isPass ? 'text' : 'password';
+  if (btnEl) {
+    btnEl.innerHTML = isPass ? '<i data-lucide="eye-off" class="w-4 h-4"></i>' : '<i data-lucide="eye" class="w-4 h-4"></i>';
+    if (window.lucide) lucide.createIcons({ root: btnEl });
+  }
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = loginEmail ? loginEmail.value.trim() : '';
+  const password = loginPassword ? loginPassword.value : '';
+
+  if (!email || !password) return;
+
+  if (loginBtnSpinner) loginBtnSpinner.classList.remove('hidden');
+  if (loginBtnIcon) loginBtnIcon.classList.add('hidden');
+  if (loginSubmitBtn) loginSubmitBtn.disabled = true;
+  if (loginError) loginError.classList.add('hidden');
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Sign in failed');
+    }
+
+    state.authToken = data.token;
+    state.currentUser = data.user;
+    localStorage.setItem('doc_auth_token', data.token);
+
+    updateUserUI();
+    showToast(`Welcome back, ${data.user.name}!`, 'success');
+    await fetchDocuments();
+  } catch (err) {
+    if (loginError && loginErrorText) {
+      loginErrorText.textContent = err.message;
+      loginError.classList.remove('hidden');
+    }
+  } finally {
+    if (loginBtnSpinner) loginBtnSpinner.classList.add('hidden');
+    if (loginBtnIcon) loginBtnIcon.classList.remove('hidden');
+    if (loginSubmitBtn) loginSubmitBtn.disabled = false;
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const name = registerName ? registerName.value.trim() : '';
+  const email = registerEmail ? registerEmail.value.trim() : '';
+  const password = registerPassword ? registerPassword.value : '';
+  const confirmPassword = registerPasswordConfirm ? registerPasswordConfirm.value : '';
+
+  if (registerError) registerError.classList.add('hidden');
+
+  if (password !== confirmPassword) {
+    if (registerError && registerErrorText) {
+      registerErrorText.textContent = 'Passwords do not match.';
+      registerError.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (password.length < 6) {
+    if (registerError && registerErrorText) {
+      registerErrorText.textContent = 'Password must be at least 6 characters.';
+      registerError.classList.remove('hidden');
+    }
+    return;
+  }
+
+  if (registerBtnSpinner) registerBtnSpinner.classList.remove('hidden');
+  if (registerBtnIcon) registerBtnIcon.classList.add('hidden');
+  if (registerSubmitBtn) registerSubmitBtn.disabled = true;
+
+  try {
+    const res = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || 'Registration failed');
+    }
+
+    state.authToken = data.token;
+    state.currentUser = data.user;
+    localStorage.setItem('doc_auth_token', data.token);
+
+    updateUserUI();
+    showToast(`Welcome to DocumentIQ, ${data.user.name}!`, 'success');
+    await fetchDocuments();
+  } catch (err) {
+    if (registerError && registerErrorText) {
+      registerErrorText.textContent = err.message;
+      registerError.classList.remove('hidden');
+    }
+  } finally {
+    if (registerBtnSpinner) registerBtnSpinner.classList.add('hidden');
+    if (registerBtnIcon) registerBtnIcon.classList.remove('hidden');
+    if (registerSubmitBtn) registerSubmitBtn.disabled = false;
+  }
+}
+
+async function handleLogout() {
+  if (!confirm('Are you sure you want to sign out?')) return;
+
+  try {
+    if (state.authToken) {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+    }
+  } catch (err) {
+    console.warn('Logout notification error:', err);
+  }
+
+  state.authToken = null;
+  state.currentUser = null;
+  state.documents = [];
+  state.activeDocId = null;
+  state.activeDoc = null;
+  localStorage.removeItem('doc_auth_token');
+
+  renderDocumentList();
+  selectDocument(null);
+  updateUserUI();
+  showToast('Signed out successfully.', 'info');
+}
+
 // ==========================================
 // Initialization & Startup
 // ==========================================
@@ -480,8 +740,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupVoiceRecognition();
   checkHealth();
-  await fetchDocuments();
+  const isAuth = await initAuth();
+  if (isAuth) {
+    await fetchDocuments();
+  }
 });
+
 
 function initIcons() {
   if (window.lucide) {
@@ -575,6 +839,24 @@ function renderQuickQuestions(domainId) {
 // Event Listeners Setup
 // ==========================================
 function setupEventListeners() {
+  // Authentication Event Listeners
+  if (authTabLogin) authTabLogin.addEventListener('click', () => switchAuthTab('login'));
+  if (authTabRegister) authTabRegister.addEventListener('click', () => switchAuthTab('register'));
+  if (switchToRegister) switchToRegister.addEventListener('click', () => switchAuthTab('register'));
+  if (switchToLogin) switchToLogin.addEventListener('click', () => switchAuthTab('login'));
+  if (loginForm) loginForm.addEventListener('submit', handleLogin);
+  if (registerForm) registerForm.addEventListener('submit', handleRegister);
+  if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  if (openAuthModalBtn) openAuthModalBtn.addEventListener('click', () => {
+    if (authModal) authModal.classList.remove('hidden');
+  });
+  if (toggleLoginPassword) {
+    toggleLoginPassword.addEventListener('click', () => togglePassword(loginPassword, toggleLoginPassword));
+  }
+  if (toggleRegisterPassword) {
+    toggleRegisterPassword.addEventListener('click', () => togglePassword(registerPassword, toggleRegisterPassword));
+  }
+
   // Dropzone
   if (dropzone) {
     dropzone.addEventListener('click', () => fileInput && fileInput.click());
@@ -1063,6 +1345,7 @@ async function uploadFile(file) {
 
     const res = await fetch('/upload', {
       method: 'POST',
+      headers: getAuthHeaders(),
       body: formData,
     });
 
@@ -1098,7 +1381,9 @@ async function uploadFile(file) {
 
 async function fetchDocuments() {
   try {
-    const res = await fetch('/api/documents');
+    const res = await fetch('/api/documents', {
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Failed to load documents');
     const docs = await res.json();
     state.documents = docs;
@@ -1311,7 +1596,10 @@ async function deleteDocument(docId, filename) {
   }
 
   try {
-    const res = await fetch(`/api/documents/${docId}`, { method: 'DELETE' });
+    const res = await fetch(`/api/documents/${docId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
     if (!res.ok) throw new Error('Delete failed');
     showToast(`Deleted "${filename}"`, 'success');
     if (state.activeDocId === docId) {

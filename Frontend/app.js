@@ -509,6 +509,75 @@ const switchToLogin = document.getElementById('switchToLogin');
 const toggleLoginPassword = document.getElementById('toggleLoginPassword');
 const toggleRegisterPassword = document.getElementById('toggleRegisterPassword');
 
+// Sidebar Responsive DOM Elements
+const sidebar = document.getElementById('sidebar');
+const toggleSidebarBtn = document.getElementById('toggleSidebarBtn');
+const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+const sidebarToggleIcon = document.getElementById('sidebarToggleIcon');
+
+// Sidebar Responsive Controls
+function toggleSidebar() {
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) {
+    if (sidebar && sidebar.classList.contains('open')) {
+      closeMobileSidebar();
+    } else {
+      openMobileSidebar();
+    }
+  } else {
+    if (sidebar) {
+      sidebar.classList.toggle('collapsed');
+      updateSidebarToggleIcon();
+    }
+  }
+}
+
+function openMobileSidebar() {
+  if (!sidebar) return;
+  sidebar.classList.add('open');
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.remove('hidden');
+  }
+  updateSidebarToggleIcon();
+}
+
+function closeMobileSidebar() {
+  if (!sidebar) return;
+  sidebar.classList.remove('open');
+  if (sidebarBackdrop) {
+    sidebarBackdrop.classList.add('hidden');
+  }
+  updateSidebarToggleIcon();
+}
+
+function closeSidebar() {
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) {
+    closeMobileSidebar();
+  } else {
+    if (sidebar) {
+      sidebar.classList.add('collapsed');
+      updateSidebarToggleIcon();
+    }
+  }
+}
+
+function updateSidebarToggleIcon() {
+  if (!sidebarToggleIcon || !sidebar) return;
+  const isMobile = window.innerWidth < 768;
+  if (isMobile) {
+    const isOpen = sidebar.classList.contains('open');
+    sidebarToggleIcon.setAttribute('data-lucide', isOpen ? 'x' : 'panel-left');
+  } else {
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    sidebarToggleIcon.setAttribute('data-lucide', isCollapsed ? 'panel-left-open' : 'panel-left');
+  }
+  if (window.lucide) {
+    lucide.createIcons();
+  }
+}
+
 // Helper to get auth header
 function getAuthHeaders(headers = {}) {
   if (state.authToken) {
@@ -857,6 +926,29 @@ function setupEventListeners() {
     toggleRegisterPassword.addEventListener('click', () => togglePassword(registerPassword, toggleRegisterPassword));
   }
 
+  // Sidebar Responsive Toggles
+  if (toggleSidebarBtn) toggleSidebarBtn.addEventListener('click', toggleSidebar);
+  if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeSidebar);
+  if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
+  // Close mobile sidebar on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (window.innerWidth < 768 && sidebar && sidebar.classList.contains('open')) {
+        closeMobileSidebar();
+      }
+    }
+  });
+
+  // Handle window resize
+  window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) {
+      if (sidebarBackdrop) sidebarBackdrop.classList.add('hidden');
+      if (sidebar) sidebar.classList.remove('open');
+    }
+    updateSidebarToggleIcon();
+  });
+
   // Dropzone
   if (dropzone) {
     dropzone.addEventListener('click', () => fileInput && fileInput.click());
@@ -1057,7 +1149,12 @@ function setupEventListeners() {
 
   // View Raw Text from Sidebar -> switch to reader tab
   if (viewRawTextBtn) {
-    viewRawTextBtn.addEventListener('click', () => switchTab('reader'));
+    viewRawTextBtn.addEventListener('click', () => {
+      if (window.innerWidth < 768) {
+        closeMobileSidebar();
+      }
+      switchTab('reader');
+    });
   }
 
   if (closeModalBtn && textModal) {
@@ -1476,6 +1573,11 @@ function renderDocumentList() {
 }
 
 async function selectDocument(docId) {
+  // If on mobile, auto-close the drawer so the user immediately sees the active document & chat
+  if (window.innerWidth < 768) {
+    closeMobileSidebar();
+  }
+
   if (!docId) {
     state.activeDocId = null;
     state.activeDoc = null;

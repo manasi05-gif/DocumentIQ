@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DocumentIQ — Smart Document Q&A & Analyzer</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              100: '#ede9fe',
+              200: '#ddd6fe',
+              300: '#c4b5fd',
+              400: '#a78bfa',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+              800: '#5b21b6',
+              900: '#4c1d95',
+            },
+            dark: {
+              bg: '#0B0F17',
+              card: '#121826',
+              surface: '#182234',
+              border: '#233044',
+              hover: '#1E2C42',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Marked Markdown Parser -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Mermaid.js for Visual Mind Maps -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <!-- html2pdf.js for Client-side PDF Generation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- Highlight.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <!-- KaTeX LaTeX Math Typesetting -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css?v=6.5">
+</head>
+<body class="bg-dark-bg text-slate-100 font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500 selection:text-white">
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="h-16 border-b border-dark-border bg-dark-card/80 backdrop-blur-md sticky top-0 z-30 flex items-center justify-between px-6">
+    <div class="flex items-center space-x-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-indigo-600 to-purple-400 flex items-center justify-center shadow-lg shadow-brand-500/20">
+        <i data-lucide="sparkles" class="w-5 h-5 text-white"></i>
+      </div>
+      <div>
+        <div class="flex items-center space-x-2">
+          <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">DocumentIQ</h1>
+          <span class="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">Pro AI</span>
+        </div>
+        <p class="text-xs text-slate-400 hidden sm:block">Intelligent Q&A, Study Hub, Mind Maps, Voice & Exports</p>
+      </div>
+    </div>
+
+    <!-- Active Document Status & API Indicator -->
+    <div class="flex items-center space-x-4">
+      <div id="activeDocBadge" class="hidden items-center space-x-2 px-3 py-1.5 rounded-lg bg-dark-surface border border-dark-border text-xs text-slate-300">
+        <i data-lucide="file-text" class="w-3.5 h-3.5 text-brand-400"></i>
+        <span id="activeDocName" class="font-medium max-w-[150px] truncate">Document</span>
+        <button id="closeActiveDocBtn" title="Deselect" class="text-slate-400 hover:text-white ml-1">
+          <i data-lucide="x" class="w-3.5 h-3.5"></i>
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="systemStatus">Gemini 3.8 / Flash</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN APP CONTAINER -->
+  <div class="flex-1 flex overflow-hidden">
+    
+    <!-- LEFT SIDEBAR: Document Library & Uploader -->
+    <aside class="w-80 lg:w-96 flex-shrink-0 border-r border-dark-border bg-dark-card flex flex-col h-[calc(100vh-4rem)]">
+      
+      <!-- Upload Dropzone Card -->
+      <div class="p-4 border-b border-dark-border">
+        <div id="dropzone" class="border-2 border-dashed border-dark-border hover:border-brand-500/50 hover:bg-brand-500/5 rounded-2xl p-5 text-center cursor-pointer transition-all duration-200 group">
+          <input type="file" id="fileInput" class="hidden" accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json">
+          <div class="w-12 h-12 rounded-xl bg-dark-surface group-hover:bg-brand-500/20 text-brand-400 flex items-center justify-center mx-auto mb-3 transition-colors">
+            <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+          </div>
+          <p class="text-sm font-semibold text-slate-200 group-hover:text-brand-300">Click to upload or drag & drop</p>
+          <p class="text-xs text-slate-400 mt-1">PDF, DOCX, TXT, MD, CSV, JSON</p>
+          
+          <!-- Upload Progress -->
+          <div id="uploadProgress" class="hidden mt-3">
+            <div class="w-full bg-dark-surface rounded-full h-1.5 overflow-hidden">
+              <div id="progressBar" class="bg-brand-500 h-1.5 rounded-full w-0 transition-all duration-300"></div>
+            </div>
+            <p id="uploadStatusText" class="text-[11px] text-slate-400 mt-1.5">Processing and indexing chunks...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Search & Library Header -->
+      <div class="px-4 py-3 flex items-center justify-between border-b border-dark-border/60">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="files" class="w-4 h-4 text-slate-400"></i>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Library</span>
+        </div>
+        <span id="docCountBadge" class="text-xs px-2 py-0.5 rounded-md bg-dark-surface text-slate-400 font-mono">0 docs</span>
+      </div>
+
+      <!-- Document List (Scrollable) -->
+      <div id="documentList" class="flex-1 overflow-y-auto p-3 space-y-2">
+        <div id="emptyDocState" class="text-center py-12 px-4 text-slate-500">
+          <i data-lucide="file-question" class="w-10 h-10 mx-auto mb-3 opacity-40"></i>
+          <p class="text-sm font-medium text-slate-400">No documents yet</p>
+          <p class="text-xs mt-1">Upload a PDF or Word document to get started.</p>
+        </div>
+      </div>
+
+      <!-- Document Quick Stats (Bottom Sidebar) -->
+      <div id="sidebarStats" class="p-4 border-t border-dark-border bg-dark-surface/50 text-xs text-slate-400 hidden">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-slate-300 font-semibold">Active Document Stats</span>
+          <button id="viewRawTextBtn" class="text-brand-400 hover:text-brand-300 underline text-[11px]">Open Reader</button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-[11px]">
+          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
+            <span class="text-slate-500 block">Words</span>
+            <span id="statWords" class="text-slate-200 font-semibold font-mono">0</span>
+          </div>
+          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
+            <span class="text-slate-500 block">Chunks</span>
+            <span id="statChunks" class="text-slate-200 font-semibold font-mono">0</span>
+          </div>
+          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
+            <span class="text-slate-500 block">Reading Time</span>
+            <span id="statReadTime" class="text-slate-200 font-semibold font-mono">0m</span>
+          </div>
+          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
+            <span class="text-slate-500 block">File Size</span>
+            <span id="statSize" class="text-slate-200 font-semibold font-mono">0 KB</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT WORKSPACE: 5 Tabs -->
+    <main class="flex-1 flex flex-col h-[calc(100vh-4rem)] bg-dark-bg overflow-hidden relative">
+      
+      <!-- TAB NAVIGATION -->
+      <div class="h-12 border-b border-dark-border px-6 flex items-center justify-between bg-dark-card/50 overflow-x-auto">
+        <div class="flex space-x-1" role="tablist">
+          <button id="tabBtnChat" class="tab-btn active px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-all">
+            <i data-lucide="message-square" class="w-3.5 h-3.5"></i>
+            <span>Q&A Chat</span>
+          </button>
+          <button id="tabBtnSummary" class="tab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-all text-slate-400 hover:text-slate-200">
+            <i data-lucide="file-check-2" class="w-3.5 h-3.5"></i>
+            <span>Summaries</span>
+          </button>
+          <button id="tabBtnReader" class="tab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-all text-slate-400 hover:text-slate-200">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+            <span>Full Document</span>
+          </button>
+          <button id="tabBtnStudy" class="tab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-all text-slate-400 hover:text-slate-200 relative">
+            <i data-lucide="graduation-cap" class="w-3.5 h-3.5 text-purple-400"></i>
+            <span>Study Hub</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-purple-400 animate-ping"></span>
+          </button>
+          <button id="tabBtnMindmap" class="tab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg flex items-center space-x-1.5 transition-all text-slate-400 hover:text-slate-200 relative">
+            <i data-lucide="network" class="w-3.5 h-3.5 text-indigo-400"></i>
+            <span>Mind Map</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+          </button>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <!-- NEW CHAT BUTTON -->
+          <button id="newChatBtn" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20" title="Start a fresh conversation session">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">New Chat</span>
+          </button>
+
+          <!-- PAST CHATS BUTTON / DRAWER TOGGLE -->
+          <button id="togglePastChatsBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white text-xs flex items-center space-x-1.5 transition-all shadow-sm" title="View saved conversation sessions">
+            <i data-lucide="history" class="w-3.5 h-3.5 text-brand-400"></i>
+            <span class="hidden sm:inline">Past Chats</span>
+            <span id="sessionCountBadge" class="ml-0.5 px-1.5 py-0.2 rounded-full bg-brand-500/20 text-brand-300 text-[10px] font-mono">1</span>
+          </button>
+
+          <!-- DELETE CURRENT CHAT -->
+          <button id="clearChatBtn" class="text-xs text-slate-400 hover:text-red-400 px-2.5 py-1.5 rounded-xl hover:bg-red-500/10 transition-colors flex items-center space-x-1" title="Delete this conversation">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- TAB 1: Q&A CHAT PANE -->
+      <section id="paneChat" class="flex-1 flex flex-col overflow-hidden">
+        
+        <!-- Active Chat Session Banner -->
+        <div id="activeSessionBar" class="px-6 py-2.5 bg-dark-surface/40 border-b border-dark-border flex items-center justify-between text-xs text-slate-300">
+          <div class="flex items-center space-x-2 overflow-hidden mr-2">
+            <div class="w-5 h-5 rounded-md bg-brand-500/20 text-brand-300 flex items-center justify-center flex-shrink-0 text-[11px]">
+              <i data-lucide="message-square" class="w-3 h-3"></i>
+            </div>
+            <div class="flex items-center space-x-1.5 overflow-hidden">
+              <span class="text-slate-400 text-[11px] font-medium flex-shrink-0">Chat:</span>
+              <span id="activeSessionTitle" class="font-semibold text-slate-100 truncate max-w-[220px] sm:max-w-md cursor-pointer hover:text-brand-300 transition-colors" title="Click to rename this conversation">New Chat</span>
+              <button id="renameSessionBtn" class="text-slate-400 hover:text-white p-1 rounded hover:bg-dark-hover transition-colors" title="Rename this conversation">
+                <i data-lucide="pencil" class="w-3 h-3"></i>
+              </button>
+            </div>
+          </div>
+          <div class="flex items-center space-x-2 text-[11px] text-slate-400 flex-shrink-0">
+            <span id="sessionMessageCount" class="font-mono text-slate-400 hidden sm:inline">0 msgs</span>
+            <span class="text-slate-600 hidden sm:inline">•</span>
+            <button id="viewAllChatsLink" class="text-brand-400 hover:text-brand-300 font-medium hover:underline flex items-center space-x-1">
+              <i data-lucide="folder" class="w-3 h-3"></i>
+              <span>All Chats (<span id="totalSessionsCount">1</span>)</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div id="chatMessages" class="flex-1 overflow-y-auto p-6 space-y-6">
+          
+          <!-- Welcome Prompt when no chat yet -->
+          <div id="chatWelcome" class="max-w-3xl mx-auto my-auto text-center py-8 px-4 sm:px-6">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600/30 to-purple-500/20 border border-brand-500/30 flex items-center justify-center mx-auto mb-3 text-brand-400">
+              <i data-lucide="graduation-cap" class="w-7 h-7"></i>
+            </div>
+            <h2 class="text-2xl font-bold text-white mb-1.5">Universal AI Study & Document Hub</h2>
+            <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mb-5 leading-relaxed">
+              Custom-tailored for students across all disciplines — Medical, Law, Commerce, STEM, Humanities & General Studies.
+            </p>
+
+            <!-- ACADEMIC DOMAIN / STREAM SELECTOR -->
+            <div class="mb-5 bg-dark-card/90 border border-dark-border/80 rounded-2xl p-3 shadow-lg">
+              <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-2 flex items-center justify-center space-x-1.5">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-400"></i>
+                <span>Choose Your Stream / Field:</span>
+              </div>
+              <div class="flex flex-wrap justify-center gap-1.5" id="domainSelectorGroup">
+                <button data-domain="general" class="domain-pill-btn active px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5">
+                  <span>🎓</span><span>General Academic</span>
+                </button>
+                <button data-domain="medical" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
+                  <span>🧬</span><span>Medical & Bio</span>
+                </button>
+                <button data-domain="law" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
+                  <span>⚖️</span><span>Law & Judiciary</span>
+                </button>
+                <button data-domain="commerce" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
+                  <span>📊</span><span>Commerce & CA</span>
+                </button>
+                <button data-domain="stem" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
+                  <span>🔬</span><span>STEM & Engineering</span>
+                </button>
+                <button data-domain="humanities" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
+                  <span>📚</span><span>Humanities & UPSC</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- DOMAIN ADAPTIVE QUICK QUESTIONS -->
+            <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-2.5">
+              High-Yield Quick Prompts:
+            </div>
+            <div class="flex flex-wrap justify-center gap-2 max-w-xl mx-auto" id="quickQuestions">
+              <!-- Dynamically populated by app.js based on domain -->
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Chat Input Bar with Microphone & Quick Helper Chips -->
+        <div class="p-4 border-t border-dark-border bg-dark-card">
+          <!-- Quick Study Helpers Bar -->
+          <div class="max-w-4xl mx-auto mb-2.5 flex items-center justify-between text-xs px-1 overflow-x-auto gap-2">
+            <div class="flex items-center space-x-1.5 flex-shrink-0">
+              <span class="text-[11px] text-slate-400 font-medium">Stream:</span>
+              <button type="button" id="activeDomainBadge" class="px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-brand-300 font-semibold text-[11px] flex items-center space-x-1 transition-all" title="Click to view stream switcher">
+                <span id="activeDomainIcon">🎓</span>
+                <span id="activeDomainName">General Academic</span>
+              </button>
+            </div>
+            <div class="flex items-center space-x-1.5 flex-shrink-0">
+              <button type="button" id="feynmanBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-amber-300 hover:text-amber-200 transition-all flex items-center space-x-1 text-[11px]" title="Explain using simple everyday analogies (Feynman Technique)">
+                <span>💡</span><span>Explain Simply</span>
+              </button>
+              <button type="button" id="quickBulletBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-cyan-300 hover:text-cyan-200 transition-all flex items-center space-x-1 text-[11px]" title="Get a 3-bullet takeaway summary">
+                <span>📝</span><span>3 Bullets</span>
+              </button>
+              <button type="button" id="quickExamTrapsBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-rose-300 hover:text-rose-200 transition-all flex items-center space-x-1 text-[11px]" title="Uncover common exam traps & confusing points">
+                <span>⚠️</span><span>Exam Traps</span>
+              </button>
+              <button type="button" id="quickQuizMeBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-purple-300 hover:text-purple-200 transition-all flex items-center space-x-1 text-[11px]" title="Test me with 1 challenging practice MCQ">
+                <span>🧪</span><span>Quiz Me</span>
+              </button>
+            </div>
+          </div>
+
+          <form id="chatForm" class="max-w-4xl mx-auto relative flex items-end bg-dark-surface border border-dark-border rounded-2xl focus-within:border-brand-500/60 transition-all shadow-lg">
+            <textarea
+              id="chatInput"
+              rows="1"
+              placeholder="Ask a question in English or Hinglish... (or click mic to speak)"
+              class="w-full bg-transparent px-4 py-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-36 overflow-y-auto"
+            ></textarea>
+            
+            <!-- Voice Input Button -->
+            <button
+              type="button"
+              id="voiceBtn"
+              class="m-2 p-2.5 rounded-xl bg-dark-hover hover:bg-dark-card text-slate-300 hover:text-white transition-all flex-shrink-0"
+              title="Voice Input (Click to speak)"
+            >
+              <i data-lucide="mic" class="w-4 h-4"></i>
+            </button>
+
+            <!-- Send Button -->
+            <button
+              type="submit"
+              id="sendBtn"
+              class="m-2 ml-0 p-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+              title="Send Message"
+            >
+              <i data-lucide="send" class="w-4 h-4"></i>
+            </button>
+          </form>
+          <p class="text-center text-[11px] text-slate-500 mt-2">
+            Answers are strictly grounded in document context with KaTeX LaTeX math & multi-domain support.
+          </p>
+        </div>
+      </section>
+
+      <!-- TAB 2: SMART SUMMARIES PANE -->
+      <section id="paneSummary" class="flex-1 flex flex-col overflow-hidden hidden p-6">
+        <div class="max-w-4xl mx-auto w-full flex-1 flex flex-col space-y-5 overflow-hidden">
+          
+          <!-- Summary Control Bar -->
+          <div class="bg-dark-card border border-dark-border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-semibold text-slate-400">Style:</span>
+              <div class="inline-flex rounded-xl bg-dark-surface p-1 border border-dark-border" id="summaryTypeGroup">
+                <button data-type="bullet" class="summary-type-btn active px-3 py-1.5 text-xs font-medium rounded-lg transition-all">
+                  📌 Key Points
+                </button>
+                <button data-type="executive" class="summary-type-btn px-3 py-1.5 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition-all">
+                  🎯 Executive
+                </button>
+                <button data-type="action_items" class="summary-type-btn px-3 py-1.5 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition-all">
+                  ✅ Action Items
+                </button>
+                <button data-type="deep" class="summary-type-btn px-3 py-1.5 text-xs font-medium rounded-lg text-slate-400 hover:text-white transition-all">
+                  🔬 Deep Dive
+                </button>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-2 flex-wrap gap-2">
+              <button id="generateSummaryBtn" class="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                <span>Generate Summary</span>
+              </button>
+              
+              <!-- Audio Listen Button -->
+              <button id="speakSummaryBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-purple-400 hover:text-purple-300 text-xs flex items-center space-x-1.5 transition-all" title="Listen to Summary">
+                <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+                <span>Listen</span>
+              </button>
+
+              <!-- Export DOCX -->
+              <button id="exportSummaryDocxBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Download Word (.docx)">
+                <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
+                <span>DOCX</span>
+              </button>
+
+              <!-- Export PDF -->
+              <button id="exportSummaryPdfBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Download PDF">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                <span>PDF</span>
+              </button>
+
+              <button id="copySummaryBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Copy to Clipboard">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>Copy</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Summary Output Card -->
+          <div class="flex-1 bg-dark-card border border-dark-border rounded-2xl p-6 overflow-y-auto" id="summaryExportArea">
+            <div id="summaryPlaceholder" class="text-center py-20 text-slate-500">
+              <i data-lucide="file-text" class="w-12 h-12 mx-auto mb-3 opacity-40"></i>
+              <p class="text-base font-semibold text-slate-300">No Summary Generated Yet</p>
+              <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">Select a summary style above and click 'Generate Summary' to distill the document using Gemini.</p>
+            </div>
+
+            <div id="summaryContent" class="prose prose-invert max-w-none text-slate-200 hidden">
+              <!-- Rendered markdown injected here -->
+            </div>
+
+            <div id="summaryLoading" class="hidden text-center py-20">
+              <div class="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mx-auto mb-4"></div>
+              <p class="text-sm font-semibold text-slate-300">Synthesizing document insights...</p>
+              <p class="text-xs text-slate-500 mt-1">Analyzing content with Gemini</p>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- TAB 3: FULL DOCUMENT READER PANE -->
+      <section id="paneReader" class="flex-1 flex flex-col overflow-hidden hidden p-6">
+        <div class="max-w-4xl mx-auto w-full flex-1 flex flex-col bg-dark-card border border-dark-border rounded-2xl overflow-hidden shadow-xl">
+          <!-- Reader Toolbar -->
+          <div class="px-6 py-3.5 border-b border-dark-border flex flex-wrap items-center justify-between gap-3 bg-dark-surface/60">
+            <div class="flex items-center space-x-2">
+              <i data-lucide="book-open" class="w-4 h-4 text-brand-400"></i>
+              <span id="readerDocTitle" class="text-xs font-semibold text-slate-200">Document Reader</span>
+            </div>
+
+            <div class="flex items-center space-x-2 flex-wrap gap-2">
+              <!-- View Mode Toggle: Formatted Notes vs Raw Text -->
+              <div class="inline-flex rounded-lg bg-dark-card p-0.5 border border-dark-border text-xs">
+                <button id="readerModeFormatted" class="px-3 py-1 rounded-md font-medium text-white bg-brand-600 transition-all shadow-sm">Formatted Notes</button>
+                <button id="readerModeRaw" class="px-3 py-1 rounded-md font-medium text-slate-400 hover:text-white transition-all">Plain Text</button>
+              </div>
+
+              <!-- Search in document with real-time match count -->
+              <div class="relative">
+                <input
+                  type="text"
+                  id="docSearchInput"
+                  placeholder="Search in notes..."
+                  class="bg-dark-card border border-dark-border rounded-lg pl-7 pr-8 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500 w-44"
+                >
+                <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-2 top-2"></i>
+                <span id="searchMatchCount" class="hidden text-[10px] text-amber-400 absolute right-2 top-1.5 font-mono"></span>
+              </div>
+
+              <!-- Read Aloud Button -->
+              <button id="speakDocBtn" class="px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-purple-400 hover:text-purple-300 text-xs flex items-center space-x-1" title="Read Notes Aloud">
+                <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Listen</span>
+              </button>
+
+              <!-- Export DOCX -->
+              <button id="exportDocxBtn" class="px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1" title="Download Word (.docx)">
+                <i data-lucide="file-down" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">DOCX</span>
+              </button>
+
+              <!-- Export PDF -->
+              <button id="exportPdfBtn" class="px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1" title="Download PDF">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">PDF</span>
+              </button>
+
+              <!-- Copy all text button -->
+              <button id="copyDocTextBtn" class="px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1 transition-colors" title="Copy Document Content">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Copy</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Document Text Viewer: Formatted Notes & Plain Text -->
+          <div class="flex-1 p-8 overflow-y-auto bg-dark-bg/40 select-text" id="readerContainer">
+            <div id="fullDocFormatted" class="prose prose-invert max-w-none text-slate-200 text-sm leading-relaxed">
+              <div class="text-center py-16 text-slate-400">
+                <div class="w-12 h-12 rounded-xl bg-dark-surface border border-dark-border flex items-center justify-center mx-auto mb-3 text-brand-400">
+                  <i data-lucide="file-question" class="w-6 h-6"></i>
+                </div>
+                <p class="text-base font-semibold text-slate-200">No Document Selected</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Please click a document from the left library to view its notes.</p>
+              </div>
+            </div>
+            <div id="fullDocText" class="hidden"></div>
+            <div id="fullDocRaw" class="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed hidden">
+              No document selected.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: STUDY HUB (QUIZ & FLASHCARDS) -->
+      <section id="paneStudy" class="flex-1 flex flex-col overflow-hidden hidden p-6">
+        <div class="max-w-4xl mx-auto w-full flex-1 flex flex-col space-y-5 overflow-hidden">
+          
+          <!-- Study Sub-Navigation -->
+          <div class="bg-dark-card border border-dark-border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-4">
+            <div class="inline-flex rounded-xl bg-dark-surface p-1 border border-dark-border">
+              <button id="studySubTabQuiz" class="subtab-btn active px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center space-x-1.5">
+                <i data-lucide="help-circle" class="w-4 h-4"></i>
+                <span>Practice Quiz</span>
+              </button>
+              <button id="studySubTabFlashcards" class="subtab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-400 hover:text-white flex items-center space-x-1.5">
+                <i data-lucide="layers" class="w-4 h-4"></i>
+                <span>Flashcards Deck</span>
+              </button>
+              <button id="studySubTabCheatsheet" class="subtab-btn px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all text-slate-400 hover:text-white flex items-center space-x-1.5">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
+                <span>Cheat Sheet</span>
+                <span class="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">NEW</span>
+              </button>
+            </div>
+
+            <!-- Quiz Controls -->
+            <div id="quizControls" class="flex flex-wrap items-center gap-2">
+              <!-- Topic Selector -->
+              <div class="relative flex items-center">
+                <select id="quizTopicSelect" class="bg-dark-surface border border-dark-border rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none max-w-[180px] sm:max-w-[210px] truncate" title="Select specific topic or test all">
+                  <option value="all">🎯 All Topics (Full Coverage)</option>
+                  <!-- Dynamically populated topics -->
+                  <option value="custom">✏️ Enter Custom Topic...</option>
+                </select>
+                <input
+                  type="text"
+                  id="quizCustomTopicInput"
+                  placeholder="e.g. Joins, Firewall, Section 300..."
+                  class="hidden ml-1.5 w-36 sm:w-44 bg-dark-surface border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-500"
+                />
+              </div>
+
+              <!-- Difficulty Selector -->
+              <select id="quizDifficulty" class="bg-dark-surface border border-dark-border rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none" title="Select difficulty level">
+                <option value="beginner">🟢 Beginner (Basics)</option>
+                <option value="medium" selected>🟡 Intermediate (Standard)</option>
+                <option value="hard">🔴 Advanced (Tricky)</option>
+              </select>
+
+              <!-- Question Count -->
+              <select id="quizCount" class="bg-dark-surface border border-dark-border rounded-xl px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none">
+                <option value="3">3 Qs</option>
+                <option value="5" selected>5 Qs</option>
+                <option value="10">10 Qs</option>
+              </select>
+
+              <!-- Generate Quiz Button -->
+              <button id="startQuizBtn" class="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20">
+                <i data-lucide="play" class="w-3.5 h-3.5"></i>
+                <span>Start Quiz</span>
+              </button>
+
+              <!-- Knowledge Radar / Weakness Button -->
+              <button id="viewMasteryRadarBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white text-xs flex items-center space-x-1.5 transition-all shadow-sm" title="View your diagnostic weakness & topic mastery radar">
+                <i data-lucide="crosshair" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span class="hidden sm:inline">Weakness Radar</span>
+              </button>
+            </div>
+
+            <!-- Flashcards Controls -->
+            <div id="flashcardControls" class="hidden flex items-center space-x-2">
+              <select id="flashcardCount" class="bg-dark-surface border border-dark-border rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
+                <option value="6">6 Cards</option>
+                <option value="8" selected>8 Cards</option>
+                <option value="12">12 Cards</option>
+              </select>
+              <button id="startFlashcardsBtn" class="px-4 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                <span>Generate Cards</span>
+              </button>
+            </div>
+
+            <!-- Cheat Sheet Controls -->
+            <div id="cheatsheetControls" class="hidden flex items-center space-x-2">
+              <select id="cheatsheetFocus" class="bg-dark-surface border border-dark-border rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none">
+                <option value="comprehensive" selected>Comprehensive (All-in-One)</option>
+                <option value="medical">🧬 Medical (Symptoms, Drugs, Diagnosis)</option>
+                <option value="law">⚖️ Law (Sections, Case Laws, Doctrines)</option>
+                <option value="commerce">📊 Commerce & CA (Formulas, Standards, Ratios)</option>
+                <option value="stem">🔬 STEM & Tech (Equations, Algorithms, Units)</option>
+                <option value="humanities">📚 Humanities & UPSC (Timelines, Theories, Thinkers)</option>
+                <option value="commands">Commands & Syntax Only</option>
+                <option value="formulas_definitions">Formulas & Definitions</option>
+                <option value="exam_cram">Exam Cram & Traps</option>
+              </select>
+              <button id="startCheatsheetBtn" class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-emerald-500/20">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                <span>Generate Cheat Sheet</span>
+              </button>
+              <button id="downloadCheatsheetPdfBtn" class="px-3 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-200 hover:text-white text-xs hidden flex items-center space-x-1.5 transition-all shadow-sm" title="Download Cheat Sheet as PDF">
+                <i data-lucide="file-down" class="w-3.5 h-3.5 text-rose-400"></i>
+                <span>Download PDF</span>
+              </button>
+              <button id="downloadCheatsheetMdBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-200 hover:text-white text-xs hidden flex items-center space-x-1 transition-all shadow-sm" title="Download as .MD file">
+                <i data-lucide="download" class="w-3.5 h-3.5 text-blue-400"></i>
+                <span class="hidden sm:inline">.MD</span>
+              </button>
+              <button id="copyCheatsheetMarkdownBtn" class="p-2 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white text-xs hidden transition-colors" title="Copy Markdown">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Study Pane Workspace -->
+          <div class="flex-1 bg-dark-card border border-dark-border rounded-2xl p-6 overflow-y-auto flex flex-col justify-center">
+            
+            <!-- QUIZ VIEW -->
+            <div id="quizContainer" class="max-w-2xl mx-auto w-full">
+              <!-- Empty State -->
+              <div id="quizEmpty" class="text-center py-16 text-slate-500">
+                <i data-lucide="help-circle" class="w-12 h-12 mx-auto mb-3 opacity-40 text-purple-400"></i>
+                <p class="text-base font-semibold text-slate-200">Interactive Quiz & Topic Mastery</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Generate practice questions, identify weak topics, and master them with progressive remedial drills.</p>
+              </div>
+
+              <!-- Loading State -->
+              <div id="quizLoading" class="hidden text-center py-16">
+                <div class="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-sm font-semibold text-slate-200" id="quizLoadingTitle">Generating Practice Questions...</p>
+                <p class="text-xs text-slate-400 mt-1" id="quizLoadingSubtitle">Analyzing key concepts with Gemini</p>
+              </div>
+
+              <!-- Active Question View -->
+              <div id="quizActive" class="hidden space-y-5">
+                <!-- Progress & Header -->
+                <div class="flex items-center justify-between text-xs text-slate-400">
+                  <div class="flex items-center space-x-2">
+                    <span id="quizProgressText" class="font-mono">Question 1 of 5</span>
+                    <span id="quizQuestionTopicBadge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-500/10 text-brand-300 border border-brand-500/30">Core Concepts</span>
+                    <span id="quizQuestionDifficultyBadge" class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">Beginner</span>
+                  </div>
+                  <span id="quizScoreText" class="font-mono text-purple-400 font-semibold">Score: 0</span>
+                </div>
+                <div class="w-full bg-dark-surface rounded-full h-1.5 overflow-hidden">
+                  <div id="quizProgressBar" class="bg-brand-500 h-1.5 rounded-full w-0 transition-all duration-300"></div>
+                </div>
+
+                <!-- Question Prompt -->
+                <h3 id="quizQuestionPrompt" class="text-base sm:text-lg font-bold text-white leading-relaxed">
+                  Question text here?
+                </h3>
+
+                <!-- Options Grid -->
+                <div id="quizOptionsList" class="space-y-3">
+                  <!-- Dynamic Option Buttons -->
+                </div>
+
+                <!-- Explanation Box -->
+                <div id="quizExplanation" class="hidden p-4 rounded-xl border border-brand-500/30 bg-brand-500/10 text-xs text-slate-200 space-y-2">
+                  <div>
+                    <p class="font-semibold text-brand-300 mb-1">Explanation:</p>
+                    <p id="quizExplanationText" class="leading-relaxed"></p>
+                  </div>
+                  <div id="quizImprovementTipBox" class="pt-2 border-t border-brand-500/20 text-[11px] text-amber-300 flex items-start space-x-1.5">
+                    <i data-lucide="lightbulb" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-400"></i>
+                    <div>
+                      <span class="font-semibold">Improvement Advice: </span>
+                      <span id="quizImprovementTipText"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Next Question Button -->
+                <div class="flex justify-end pt-2">
+                  <button id="nextQuestionBtn" class="hidden px-5 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-lg shadow-brand-500/20">
+                    <span>Next Question</span>
+                    <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Score Summary & AI Weakness Diagnostic View -->
+              <div id="quizResult" class="hidden py-6 space-y-6">
+                <!-- Top Score Header -->
+                <div class="text-center space-y-2">
+                  <div class="w-20 h-20 rounded-full bg-brand-500/20 border-2 border-brand-500 flex items-center justify-center mx-auto text-brand-300 font-mono font-bold text-2xl shadow-lg shadow-brand-500/20" id="finalScoreCircle">
+                    100%
+                  </div>
+                  <h3 class="text-xl font-bold text-white">Quiz Completed!</h3>
+                  <p id="quizSummaryFeedback" class="text-xs sm:text-sm text-slate-400 max-w-md mx-auto">Evaluating knowledge gaps & topic retention...</p>
+                </div>
+
+                <!-- AI Topic Diagnostics Grid -->
+                <div id="topicDiagnosticsContainer" class="space-y-4">
+                  <!-- Section 1: Weak Topics (Needs Immediate Focus) -->
+                  <div id="weakTopicsSection" class="p-4 rounded-2xl border border-red-500/30 bg-red-950/20 space-y-3 hidden">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center space-x-2">
+                        <span class="w-7 h-7 rounded-lg bg-red-500/20 text-red-400 flex items-center justify-center">
+                          <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                        </span>
+                        <div>
+                          <h4 class="text-xs font-bold text-red-300">Weak Topics Detected (Needs Improvement)</h4>
+                          <p class="text-[10px] text-slate-400">In topics me accuracy kam aayi hai. Click karein aur Beginner se Advanced master karein:</p>
+                        </div>
+                      </div>
+                      <span id="weakTopicsCountBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-300 border border-red-500/40">0 Topics</span>
+                    </div>
+                    <div id="weakTopicsList" class="space-y-2.5">
+                      <!-- Rendered weak topic cards with "Master This Topic" button -->
+                    </div>
+                  </div>
+
+                  <!-- Section 2: Mastered Topics (Aapne Master Kar Liya!) -->
+                  <div id="masteredTopicsSection" class="p-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 space-y-3 hidden">
+                    <div class="flex items-center justify-between">
+                      <div class="flex items-center space-x-2">
+                        <span class="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                          <i data-lucide="award" class="w-4 h-4"></i>
+                        </span>
+                        <div>
+                          <h4 class="text-xs font-bold text-emerald-300">🎉 Mastered Topics (Shabash! Aapne Master Kar Liya)</h4>
+                          <p class="text-[10px] text-slate-400">High accuracy and rock-solid concept clarity</p>
+                        </div>
+                      </div>
+                      <span id="masteredTopicsCountBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">0 Topics</span>
+                    </div>
+                    <div id="masteredTopicsList" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <!-- Rendered mastered topic badges -->
+                    </div>
+                  </div>
+
+                  <!-- Section 3: Developing Topics (Review Recommended) -->
+                  <div id="developingTopicsSection" class="p-4 rounded-2xl border border-amber-500/30 bg-amber-950/20 space-y-2 hidden">
+                    <div class="flex items-center space-x-2">
+                      <span class="w-6 h-6 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs">
+                        <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+                      </span>
+                      <h4 class="text-xs font-bold text-amber-300">Developing Topics (Good Effort, Keep Practicing)</h4>
+                    </div>
+                    <div id="developingTopicsList" class="space-y-2 text-xs text-slate-300">
+                      <!-- Developing topics list -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="pt-3 flex flex-wrap items-center justify-center gap-3">
+                  <button id="retakeQuizBtn" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold inline-flex items-center space-x-1.5 transition-all shadow-lg shadow-brand-500/20">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span>Retake Quiz</span>
+                  </button>
+                  <button id="viewAllMasteryFromResultsBtn" class="px-4 py-2.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-200 text-xs font-semibold inline-flex items-center space-x-1.5 transition-all">
+                    <i data-lucide="crosshair" class="w-4 h-4 text-amber-400"></i>
+                    <span>Topic Mastery Radar</span>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- FLASHCARDS VIEW -->
+            <div id="flashcardsContainer" class="hidden max-w-lg mx-auto w-full">
+              <!-- Empty State -->
+              <div id="flashcardsEmpty" class="text-center py-16 text-slate-500">
+                <i data-lucide="layers" class="w-12 h-12 mx-auto mb-3 opacity-40 text-indigo-400"></i>
+                <p class="text-base font-semibold text-slate-200">Interactive Flashcard Deck</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Distill key definitions, acronyms, and formulas into interactive 3D flip cards.</p>
+              </div>
+
+              <!-- Loading State -->
+              <div id="flashcardsLoading" class="hidden text-center py-16">
+                <div class="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-sm font-semibold text-slate-200">Generating Flashcards...</p>
+                <p class="text-xs text-slate-400 mt-1">Extracting terms & concepts</p>
+              </div>
+
+              <!-- Active Flashcard 3D Viewer -->
+              <div id="flashcardActive" class="hidden flex flex-col items-center space-y-6">
+                <div class="text-xs text-slate-400 font-mono" id="flashcardCounter">Card 1 of 8</div>
+
+                <!-- 3D Card Box -->
+                <div class="flip-card-wrapper w-full h-72">
+                  <div class="flip-card-inner bg-dark-surface border border-dark-border shadow-2xl rounded-2xl" id="flashcardElement">
+                    <!-- Front -->
+                    <div class="flip-card-front bg-gradient-to-br from-dark-surface via-dark-card to-dark-surface">
+                      <span class="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 mb-4" id="flashcardCategory">Topic</span>
+                      <h4 class="text-xl font-bold text-white mb-4 px-4 leading-relaxed" id="flashcardFront">Front Text</h4>
+                      <div class="mt-auto text-[11px] text-slate-500 flex items-center space-x-1">
+                        <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                        <span>Click to flip</span>
+                      </div>
+                    </div>
+                    <!-- Back -->
+                    <div class="flip-card-back bg-gradient-to-br from-brand-950/40 via-dark-card to-indigo-950/40 border border-brand-500/40">
+                      <p class="text-sm text-slate-200 font-medium px-4 leading-relaxed" id="flashcardBack">Back Text</p>
+                      <div class="mt-auto text-[11px] text-slate-400 flex items-center space-x-1">
+                        <i data-lucide="rotate-ccw" class="w-3 h-3"></i>
+                        <span>Click to flip back</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Navigation Controls -->
+                <div class="flex items-center space-x-4">
+                  <button id="prevCardBtn" class="p-2.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-all">
+                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
+                  </button>
+                  <button id="flipCardBtn" class="px-4 py-2 rounded-xl bg-brand-600/30 hover:bg-brand-600 text-brand-200 hover:text-white text-xs font-semibold transition-all border border-brand-500/30">
+                    Flip Card
+                  </button>
+                  <button id="nextCardBtn" class="p-2.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition-all">
+                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- CHEATSHEET VIEW -->
+            <div id="cheatsheetContainer" class="hidden w-full flex-1 flex flex-col space-y-4 overflow-hidden">
+              <!-- Empty State -->
+              <div id="cheatsheetEmpty" class="text-center py-16 text-slate-500 my-auto">
+                <i data-lucide="file-spreadsheet" class="w-12 h-12 mx-auto mb-3 opacity-40 text-emerald-400"></i>
+                <p class="text-base font-semibold text-slate-200">1-Click Document Cheat Sheet</p>
+                <p class="text-xs text-slate-400 mt-1 max-w-md mx-auto">Distill key commands, syntax templates, acronyms, gotchas, and comparison tables into an ultra-dense revision sheet.</p>
+              </div>
+
+              <!-- Loading State -->
+              <div id="cheatsheetLoading" class="hidden text-center py-16 my-auto">
+                <div class="w-10 h-10 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-sm font-semibold text-slate-200">Synthesizing Cheat Sheet...</p>
+                <p class="text-xs text-slate-400 mt-1">Extracting syntax, definitions, tables & gotchas</p>
+              </div>
+
+              <!-- Active Cheat Sheet View -->
+              <div id="cheatsheetActive" class="hidden flex-1 flex flex-col space-y-4 overflow-hidden">
+                <!-- Cheat Sheet Header & Quick Filter -->
+                <div class="flex flex-wrap items-center justify-between gap-3 bg-dark-surface/60 border border-dark-border/80 p-3.5 rounded-xl shadow-sm">
+                  <div>
+                    <h3 id="cheatsheetTitle" class="text-sm font-bold text-white flex items-center space-x-2">
+                      <span>Document Cheat Sheet</span>
+                    </h3>
+                    <p id="cheatsheetOverview" class="text-xs text-slate-400 mt-0.5 max-w-xl truncate">High-density summary of key concepts</p>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <!-- Filter Box -->
+                    <div class="relative">
+                      <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+                      <input
+                        id="cheatsheetSearch"
+                        type="text"
+                        placeholder="Quick filter cards..."
+                        class="bg-dark-surface border border-dark-border rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500/60 w-44 sm:w-56 transition-all"
+                      />
+                    </div>
+                    <!-- Metrics Badges -->
+                    <div id="cheatsheetMetrics" class="hidden sm:flex items-center space-x-1.5 text-[11px] font-mono"></div>
+                  </div>
+                </div>
+
+                <!-- Multi-Section Content Area -->
+                <div id="cheatsheetSections" class="flex-1 overflow-y-auto space-y-5 pr-1 select-text">
+                  <!-- Dynamically populated -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: VISUAL MIND MAP PANE -->
+      <section id="paneMindmap" class="flex-1 flex flex-col overflow-hidden hidden p-4 sm:p-6">
+        <div class="w-full flex-1 flex flex-col space-y-3 overflow-hidden">
+          
+          <!-- Mindmap Controls Bar -->
+          <div class="bg-dark-card border border-dark-border rounded-2xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-md">
+            <div class="flex items-center space-x-2.5">
+              <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                <i data-lucide="network" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <span class="text-xs font-semibold text-slate-200 block">Concept Architecture & Mind Map</span>
+                <span class="text-[10px] text-slate-400">Interactive Canvas • Drag to pan • Scroll to zoom</span>
+              </div>
+            </div>
+
+            <div class="flex items-center space-x-1.5 flex-wrap">
+              <!-- Orientation Toggle -->
+              <button id="toggleOrientationBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Toggle Layout: Horizontal (LR) vs Vertical (TD)">
+                <i data-lucide="split" class="w-3.5 h-3.5 text-indigo-400"></i>
+                <span id="orientationLabel" class="font-medium">Horizontal (LR)</span>
+              </button>
+
+              <!-- Zoom Controls -->
+              <div class="inline-flex rounded-xl bg-dark-surface border border-dark-border p-0.5 items-center">
+                <button id="zoomOutBtn" class="p-1.5 text-slate-300 hover:text-white hover:bg-dark-hover rounded-lg transition-colors" title="Zoom Out (-)">
+                  <i data-lucide="zoom-out" class="w-3.5 h-3.5"></i>
+                </button>
+                <button id="zoomLevelText" class="px-2 py-1 text-[11px] font-mono text-slate-300 hover:text-white hover:bg-dark-hover rounded transition-colors select-none min-w-[42px] text-center" title="Reset Zoom to 100% (1:1 Crisp Resolution)">100%</button>
+                <button id="zoomInBtn" class="p-1.5 text-slate-300 hover:text-white hover:bg-dark-hover rounded-lg transition-colors" title="Zoom In (+)">
+                  <i data-lucide="zoom-in" class="w-3.5 h-3.5"></i>
+                </button>
+              </div>
+
+              <!-- Fit / Center View -->
+              <button id="resetZoomBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Fit to Screen">
+                <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">Fit</span>
+              </button>
+
+              <!-- Fullscreen / Theater Mode -->
+              <button id="theaterMindmapBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Toggle Fullscreen">
+                <i id="theaterIcon" data-lucide="expand" class="w-3.5 h-3.5"></i>
+                <span id="theaterText" class="hidden sm:inline">Fullscreen</span>
+              </button>
+
+              <!-- View Code -->
+              <button id="viewMermaidCodeBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="View / Edit Mermaid Diagram Code">
+                <i data-lucide="code-2" class="w-3.5 h-3.5 text-amber-400"></i>
+                <span class="hidden sm:inline">Code</span>
+              </button>
+
+              <!-- Download SVG -->
+              <button id="downloadSvgBtn" class="px-2.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs flex items-center space-x-1.5 transition-all" title="Download SVG">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                <span class="hidden sm:inline">SVG</span>
+              </button>
+
+              <!-- Generate Mind Map -->
+              <button id="generateMindmapBtn" class="px-3.5 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20 ml-1">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                <span>Generate</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Mindmap Canvas Container -->
+          <div id="mindmapCanvasWrapper" class="flex-1 bg-dark-card border border-dark-border rounded-2xl overflow-hidden relative flex flex-col shadow-inner">
+            <!-- Empty State -->
+            <div id="mindmapEmpty" class="text-center py-20 text-slate-500 my-auto">
+              <i data-lucide="network" class="w-12 h-12 mx-auto mb-3 opacity-40 text-indigo-400"></i>
+              <p class="text-base font-semibold text-slate-200">No Mind Map Generated</p>
+              <p class="text-xs text-slate-400 mt-1 max-w-sm mx-auto">Click 'Generate' to convert the document's structure and hierarchies into an interactive diagram.</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="mindmapLoading" class="hidden text-center py-20 my-auto">
+              <div class="w-10 h-10 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin mx-auto mb-4"></div>
+              <p class="text-sm font-semibold text-slate-200">Building Concept Architecture...</p>
+              <p class="text-xs text-slate-400 mt-1">Generating Mermaid graph with Gemini</p>
+            </div>
+
+            <!-- Interactive Pan/Zoom Canvas Viewport -->
+            <div id="mindmapViewportArea" class="hidden w-full h-full relative overflow-hidden cursor-grab active:cursor-grabbing select-none">
+              <div id="mindmapTransformLayer" class="absolute origin-top-left">
+                <div id="mindmapContainer" class="p-8 inline-block min-w-max"></div>
+              </div>
+
+              <!-- Canvas Mini Overlay / Helper Hint -->
+              <div class="absolute bottom-3 left-3 bg-dark-surface/85 backdrop-blur border border-dark-border/80 px-2.5 py-1 rounded-lg text-[10px] text-slate-400 flex items-center space-x-2 pointer-events-none shadow-sm">
+                <span>✋ Drag canvas to pan</span>
+                <span>•</span>
+                <span>🔍 Scroll to zoom</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- FLOATING AUDIO PLAYER BAR (Plays Text-to-Speech) -->
+      <div id="audioPlayerBar" class="hidden absolute bottom-5 left-1/2 transform -translate-x-1/2 z-40 bg-dark-card/95 backdrop-blur-md border border-brand-500/40 shadow-2xl rounded-2xl px-5 py-3 flex items-center space-x-4 animate-fade-in">
+        <div class="flex items-center space-x-1.5 h-5">
+          <div class="audio-wave-bar"></div>
+          <div class="audio-wave-bar"></div>
+          <div class="audio-wave-bar"></div>
+          <div class="audio-wave-bar"></div>
+          <div class="audio-wave-bar"></div>
+        </div>
+        <div>
+          <p id="audioPlayerTitle" class="text-xs font-semibold text-slate-200 max-w-[200px] truncate">Listening...</p>
+          <p id="audioPlayerStatus" class="text-[10px] text-purple-400">Reading aloud</p>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="audioPauseBtn" class="p-1.5 rounded-lg bg-dark-surface hover:bg-dark-hover text-slate-200 text-xs">
+            <i id="audioPauseIcon" data-lucide="pause" class="w-4 h-4"></i>
+          </button>
+          <button id="audioStopBtn" class="p-1.5 rounded-lg bg-dark-surface hover:bg-dark-hover text-red-400 text-xs" title="Stop Audio">
+            <i data-lucide="square" class="w-4 h-4"></i>
+          </button>
+          <select id="audioRateSelect" class="bg-dark-surface border border-dark-border rounded-lg px-2 py-1 text-[11px] text-slate-300">
+            <option value="1">1.0x</option>
+            <option value="1.25">1.25x</option>
+            <option value="1.5">1.5x</option>
+          </select>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- MODAL: Full Document Text Preview Modal -->
+  <div id="textModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-dark-card border border-dark-border rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-dark-border flex items-center justify-between">
+        <h3 id="modalTitle" class="font-semibold text-sm text-slate-200">Document Content</h3>
+        <button id="closeModalBtn" class="text-slate-400 hover:text-white">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div id="modalBody" class="p-6 overflow-y-auto flex-1 prose prose-invert text-xs text-slate-300"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Mermaid Code Viewer & Editor -->
+  <div id="mermaidCodeModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-dark-card border border-dark-border rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="p-4 border-b border-dark-border flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="code-2" class="w-4 h-4 text-amber-400"></i>
+          <h3 class="font-semibold text-sm text-slate-200">Mermaid Diagram Source Code</h3>
+        </div>
+        <button id="closeMermaidModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-hover">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 flex-1 flex flex-col space-y-3 overflow-hidden">
+        <p class="text-xs text-slate-400">View or modify the diagram definition below:</p>
+        <textarea id="mermaidCodeInput" class="flex-1 w-full bg-dark-surface border border-dark-border rounded-xl p-3 font-mono text-xs text-slate-200 focus:outline-none focus:border-brand-500/60 resize-none min-h-[300px] leading-relaxed" spellcheck="false"></textarea>
+      </div>
+      <div class="p-4 border-t border-dark-border flex items-center justify-between bg-dark-card/50">
+        <button id="copyMermaidCodeBtn" class="px-3.5 py-1.5 rounded-xl bg-dark-surface hover:bg-dark-hover border border-dark-border text-slate-300 text-xs font-medium flex items-center space-x-1.5 transition-all">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          <span>Copy Code</span>
+        </button>
+        <button id="applyMermaidCodeBtn" class="px-4 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-md shadow-brand-500/20">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Render Updates</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Past Chats / Saved Conversations Drawer -->
+  <div id="pastChatsModal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden items-center justify-center p-4 animate-fade-in">
+    <div class="bg-dark-card border border-dark-border rounded-2xl w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Header -->
+      <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/40">
+        <div class="flex items-center space-x-2.5">
+          <div class="w-8 h-8 rounded-lg bg-brand-500/20 text-brand-400 flex items-center justify-center">
+            <i data-lucide="history" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Saved Conversations</h3>
+            <p id="pastChatsDocName" class="text-[11px] text-slate-400 truncate max-w-xs">Document Notes</p>
+          </div>
+        </div>
+        <div class="flex items-center space-x-2">
+          <button id="modalNewChatBtn" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1 transition-all shadow-sm">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>New Chat</span>
+          </button>
+          <button id="closePastChatsModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-hover transition-colors">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Search Filter -->
+      <div class="p-3 border-b border-dark-border/60 bg-dark-surface/20">
+        <div class="relative">
+          <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2"></i>
+          <input
+            type="text"
+            id="sessionSearchInput"
+            placeholder="Search saved chats by title or question..."
+            class="w-full bg-dark-surface border border-dark-border rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-brand-500/60"
+          />
+        </div>
+      </div>
+
+      <!-- Sessions List -->
+      <div id="pastChatsList" class="flex-1 overflow-y-auto p-4 space-y-2 min-h-[220px]">
+        <!-- Dynamically rendered sessions -->
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Targeted Topic Remedial Ladder (Beginner -> Intermediate -> Advanced) -->
+  <div id="targetedDrillModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 animate-fade-in">
+    <div class="bg-dark-card border border-dark-border rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Drill Header -->
+      <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/50">
+        <div class="flex items-center space-x-3 overflow-hidden mr-2">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="target" class="w-5 h-5"></i>
+          </div>
+          <div class="overflow-hidden">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-bold text-white uppercase tracking-wider">Targeted Topic Mastery</span>
+              <span id="drillLevelBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-500/20 text-brand-300 border border-brand-500/30">Level 1: Beginner</span>
+            </div>
+            <h3 id="drillTopicTitle" class="text-sm font-bold text-amber-300 truncate">SQL Joins</h3>
+          </div>
+        </div>
+        <button id="closeDrillModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-hover transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Progressive Ladder Steps Indicator -->
+      <div class="px-6 py-2.5 bg-dark-surface/20 border-b border-dark-border/60 flex items-center justify-between text-xs">
+        <div class="flex items-center space-x-1.5 sm:space-x-3 w-full">
+          <div id="ladderStep1" class="flex-1 flex items-center space-x-1.5 p-1.5 rounded-lg bg-brand-500/20 border border-brand-500/40 text-brand-300 text-[11px] font-medium">
+            <span class="w-4 h-4 rounded-full bg-brand-500 text-white flex items-center justify-center text-[9px] font-bold">1</span>
+            <span class="truncate">Beginner</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-600 flex-shrink-0"></i>
+          <div id="ladderStep2" class="flex-1 flex items-center space-x-1.5 p-1.5 rounded-lg bg-dark-surface border border-dark-border text-slate-400 text-[11px] font-medium">
+            <span class="w-4 h-4 rounded-full bg-dark-card text-slate-400 flex items-center justify-center text-[9px] font-bold">2</span>
+            <span class="truncate">Intermediate</span>
+          </div>
+          <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-slate-600 flex-shrink-0"></i>
+          <div id="ladderStep3" class="flex-1 flex items-center space-x-1.5 p-1.5 rounded-lg bg-dark-surface border border-dark-border text-slate-400 text-[11px] font-medium">
+            <span class="w-4 h-4 rounded-full bg-dark-card text-slate-400 flex items-center justify-center text-[9px] font-bold">3</span>
+            <span class="truncate">Advanced</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drill Content Area -->
+      <div class="flex-1 overflow-y-auto p-6">
+        <!-- Loading State -->
+        <div id="drillLoading" class="hidden text-center py-16">
+          <div class="w-10 h-10 border-4 border-amber-500/20 border-t-amber-500 rounded-full animate-spin mx-auto mb-3"></div>
+          <p class="text-sm font-semibold text-slate-200" id="drillLoadingText">Generating Targeted Drill Questions...</p>
+          <p class="text-xs text-slate-400 mt-1">Adapting difficulty to build solid mastery</p>
+        </div>
+
+        <!-- Active Question View -->
+        <div id="drillActive" class="space-y-5">
+          <div class="flex items-center justify-between text-xs text-slate-400">
+            <span id="drillProgressText" class="font-mono">Question 1 of 3</span>
+            <span id="drillScoreText" class="font-mono text-amber-400 font-semibold">Correct: 0/0</span>
+          </div>
+          <div class="w-full bg-dark-surface rounded-full h-1.5 overflow-hidden">
+            <div id="drillProgressBar" class="bg-amber-500 h-1.5 rounded-full w-0 transition-all duration-300"></div>
+          </div>
+
+          <h3 id="drillQuestionPrompt" class="text-base sm:text-lg font-bold text-white leading-relaxed">
+            Question text here?
+          </h3>
+
+          <div id="drillOptionsList" class="space-y-3">
+            <!-- Dynamic Option Buttons -->
+          </div>
+
+          <!-- Explanation Box -->
+          <div id="drillExplanationBox" class="hidden p-4 rounded-xl border border-amber-500/30 bg-amber-950/20 text-xs text-slate-200 space-y-2">
+            <div>
+              <p class="font-semibold text-amber-300 mb-1">Explanation:</p>
+              <p id="drillExplanationText" class="leading-relaxed"></p>
+            </div>
+            <div id="drillTipBox" class="pt-2 border-t border-amber-500/20 text-[11px] text-amber-200 flex items-start space-x-1.5">
+              <i data-lucide="lightbulb" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-amber-400"></i>
+              <div>
+                <span class="font-semibold">Key Takeaway: </span>
+                <span id="drillTipText"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Next Button -->
+          <div class="flex justify-end pt-2">
+            <button id="drillNextBtn" class="hidden px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center space-x-1.5 transition-all shadow-lg shadow-amber-500/20">
+              <span>Next Question</span>
+              <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Level Cleared Interstitial Screen -->
+        <div id="drillLevelClearedScreen" class="hidden text-center py-12 space-y-4">
+          <div class="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center mx-auto text-emerald-400 text-2xl font-bold">
+            <i data-lucide="check" class="w-8 h-8"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white" id="drillLevelClearedTitle">Beginner Level Conquered!</h3>
+          <p id="drillLevelClearedMsg" class="text-xs text-slate-300 max-w-md mx-auto">Foundational concepts are now solid! Ready to step up to Intermediate level?</p>
+          <div class="pt-2">
+            <button id="drillAdvanceLevelBtn" class="px-6 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold inline-flex items-center space-x-2 transition-all shadow-lg shadow-brand-500/20">
+              <span>Advance to Next Level</span>
+              <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Fully Mastered Celebratory Screen -->
+        <div id="drillMasteredCelebrationScreen" class="hidden text-center py-12 space-y-4">
+          <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 border-4 border-yellow-200 flex items-center justify-center mx-auto text-dark-bg shadow-2xl shadow-yellow-500/40 animate-bounce">
+            <i data-lucide="trophy" class="w-10 h-10 text-dark-bg"></i>
+          </div>
+          <h2 class="text-2xl font-black text-white">🎉 TOPIC FULLY MASTERED!</h2>
+          <p class="text-sm font-semibold text-amber-300" id="drillMasteredTopicTitle">SQL Joins</p>
+          <p class="text-xs text-slate-300 max-w-md mx-auto">
+            Aapne Beginner se lekar Advanced level tak ke sabhi tricky questions conquer kar liye hain!
+            <span class="block mt-1 font-semibold text-emerald-400">Aapka Mastery Badge aapke document profile me permanently save ho gaya hai.</span>
+          </p>
+          <div class="pt-4 flex items-center justify-center space-x-3">
+            <button id="closeDrillAfterMasteryBtn" class="px-5 py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold inline-flex items-center space-x-1.5 transition-all shadow-lg">
+              <i data-lucide="check-circle" class="w-4 h-4"></i>
+              <span>Back to Study Hub</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Knowledge Radar & Topic Mastery Overview -->
+  <div id="topicRadarModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4 animate-fade-in">
+    <div class="bg-dark-card border border-dark-border rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Radar Header -->
+      <div class="px-6 py-4 border-b border-dark-border flex items-center justify-between bg-dark-surface/50">
+        <div class="flex items-center space-x-3 overflow-hidden mr-2">
+          <div class="w-9 h-9 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center flex-shrink-0">
+            <i data-lucide="crosshair" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-white">Topic Mastery & Knowledge Radar</h3>
+            <p id="radarDocName" class="text-[11px] text-slate-400 truncate max-w-xs">Document Notes</p>
+          </div>
+        </div>
+        <button id="closeRadarModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-dark-hover transition-colors">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Radar Body -->
+      <div class="flex-1 overflow-y-auto p-6 space-y-6">
+        <!-- Overview Stats -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="bg-dark-surface/60 border border-dark-border rounded-xl p-3 text-center">
+            <span class="text-[10px] text-slate-400 block font-medium">Overall Accuracy</span>
+            <span id="radarOverallAcc" class="text-base font-bold text-brand-300 font-mono">0%</span>
+          </div>
+          <div class="bg-dark-surface/60 border border-dark-border rounded-xl p-3 text-center">
+            <span class="text-[10px] text-slate-400 block font-medium">Weak Topics</span>
+            <span id="radarWeakCount" class="text-base font-bold text-red-400 font-mono">0</span>
+          </div>
+          <div class="bg-dark-surface/60 border border-dark-border rounded-xl p-3 text-center">
+            <span class="text-[10px] text-slate-400 block font-medium">In Progress</span>
+            <span id="radarLearningCount" class="text-base font-bold text-amber-400 font-mono">0</span>
+          </div>
+          <div class="bg-dark-surface/60 border border-dark-border rounded-xl p-3 text-center">
+            <span class="text-[10px] text-slate-400 block font-medium">Mastered</span>
+            <span id="radarMasteredCount" class="text-base font-bold text-emerald-400 font-mono">0</span>
+          </div>
+        </div>
+
+        <!-- Topics Categorized List -->
+        <div class="space-y-4">
+          <!-- Weak Topics Section -->
+          <div class="space-y-2">
+            <div class="flex items-center space-x-1.5 text-xs font-bold text-red-400">
+              <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+              <span>Weak Topics (Immediate Improvement Needed)</span>
+            </div>
+            <div id="radarWeakList" class="space-y-2">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Mastered Topics Section -->
+          <div class="space-y-2">
+            <div class="flex items-center space-x-1.5 text-xs font-bold text-emerald-400">
+              <i data-lucide="award" class="w-4 h-4"></i>
+              <span>Mastered Topics (Conquered)</span>
+            </div>
+            <div id="radarMasteredList" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- In-Progress / Other Topics Section -->
+          <div class="space-y-2">
+            <div class="flex items-center space-x-1.5 text-xs font-bold text-slate-300">
+              <i data-lucide="layers" class="w-4 h-4 text-brand-400"></i>
+              <span>All Topics in this Document</span>
+            </div>
+            <div id="radarAllTopicsList" class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 px-4 py-3 rounded-xl border text-xs font-medium shadow-2xl flex items-center space-x-2">
+    <i id="toastIcon" data-lucide="check-circle" class="w-4 h-4"></i>
+    <span id="toastMsg">Notification message</span>
+  </div>
+
+  <script src="/static/app.js?v=8.1"></script>
+</body>
+</html>

@@ -206,19 +206,11 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     doc_id = str(uuid.uuid4())
     chunks = chunk_text(text)
 
-    # Store in ChromaDB vector store
-    try:
-        add_chunks(doc_id, chunks)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to index document chunks into vector database: {str(e)}"
-        )
-
     # Identify user if authenticated
     user = get_user_from_request(request)
     user_id = user["id"] if user else None
 
-    # Persist in SQLite
+    # Persist in SQLite first so the document is always saved safely
     file_size = len(file_bytes)
     ext = os.path.splitext(file.filename)[1].lower()
     doc_info = document_store.save_document(
@@ -231,6 +223,12 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         page_count=page_count,
         user_id=user_id,
     )
+
+    # Store in ChromaDB vector store safely
+    try:
+        add_chunks(doc_id, chunks)
+    except Exception as e:
+        print(f"Warning: vector indexing failed for '{file.filename}': {e}")
 
     return {
         **doc_info,

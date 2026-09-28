@@ -508,6 +508,9 @@ const switchToRegister = document.getElementById('switchToRegister');
 const switchToLogin = document.getElementById('switchToLogin');
 const toggleLoginPassword = document.getElementById('toggleLoginPassword');
 const toggleRegisterPassword = document.getElementById('toggleRegisterPassword');
+const rememberMeCheckbox = document.getElementById('rememberMeCheckbox');
+const closeAuthModalBtn = document.getElementById('closeAuthModalBtn');
+const guestModeBtn = document.getElementById('guestModeBtn');
 
 // Sidebar Responsive DOM Elements
 const sidebar = document.getElementById('sidebar');
@@ -588,6 +591,12 @@ function getAuthHeaders(headers = {}) {
 
 // Authentication Logic
 async function initAuth() {
+  // Pre-fill remembered email
+  const savedEmail = localStorage.getItem('doc_saved_email');
+  if (savedEmail && loginEmail) {
+    loginEmail.value = savedEmail;
+  }
+
   if (state.authToken) {
     try {
       const res = await fetch('/api/auth/me', {
@@ -598,18 +607,20 @@ async function initAuth() {
         state.currentUser = data.user;
         updateUserUI();
         return true;
+      } else if (res.status === 401) {
+        // Only invalidate if backend explicitly reports expired or invalid token
+        state.authToken = null;
+        state.currentUser = null;
+        localStorage.removeItem('doc_auth_token');
       }
     } catch (err) {
-      console.warn('Auth check error:', err);
+      console.warn('Backend server not ready yet or network warning (keeping token):', err);
+      // DO NOT erase token on temporary network error or server startup delay!
     }
-    // Token invalid or expired
-    state.authToken = null;
-    state.currentUser = null;
-    localStorage.removeItem('doc_auth_token');
   }
 
   updateUserUI();
-  return false;
+  return Boolean(state.currentUser);
 }
 
 function updateUserUI() {
@@ -631,8 +642,17 @@ function updateUserUI() {
       userProfileArea.classList.remove('flex');
     }
     if (openAuthModalBtn) openAuthModalBtn.classList.remove('hidden');
-    if (authModal) authModal.classList.remove('hidden');
+    if (authModal && !state.guestMode) {
+      authModal.classList.remove('hidden');
+    }
   }
+}
+
+function handleGuestMode() {
+  state.guestMode = true;
+  if (authModal) authModal.classList.add('hidden');
+  fetchDocuments();
+  showToast('Continuing in Guest Mode. You can sign in anytime from the top bar.', 'info');
 }
 
 function switchAuthTab(tab) {
@@ -696,7 +716,14 @@ async function handleLogin(e) {
 
     state.authToken = data.token;
     state.currentUser = data.user;
+    state.guestMode = false;
     localStorage.setItem('doc_auth_token', data.token);
+
+    if (rememberMeCheckbox && rememberMeCheckbox.checked) {
+      localStorage.setItem('doc_saved_email', email);
+    } else {
+      localStorage.removeItem('doc_saved_email');
+    }
 
     updateUserUI();
     showToast(`Welcome back, ${data.user.name}!`, 'success');
@@ -756,7 +783,9 @@ async function handleRegister(e) {
 
     state.authToken = data.token;
     state.currentUser = data.user;
+    state.guestMode = false;
     localStorage.setItem('doc_auth_token', data.token);
+    localStorage.setItem('doc_saved_email', email);
 
     updateUserUI();
     showToast(`Welcome to DocumentIQ, ${data.user.name}!`, 'success');
@@ -809,10 +838,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   setupVoiceRecognition();
   checkHealth();
-  const isAuth = await initAuth();
-  if (isAuth) {
-    await fetchDocuments();
-  }
+  await initAuth();
+  await fetchDocuments();
 });
 
 
@@ -916,7 +943,10 @@ function setupEventListeners() {
   if (loginForm) loginForm.addEventListener('submit', handleLogin);
   if (registerForm) registerForm.addEventListener('submit', handleRegister);
   if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+  if (closeAuthModalBtn) closeAuthModalBtn.addEventListener('click', handleGuestMode);
+  if (guestModeBtn) guestModeBtn.addEventListener('click', handleGuestMode);
   if (openAuthModalBtn) openAuthModalBtn.addEventListener('click', () => {
+    state.guestMode = false;
     if (authModal) authModal.classList.remove('hidden');
   });
   if (toggleLoginPassword) {
@@ -966,7 +996,10 @@ function setupEventListeners() {
     });
   }
 
-  if (fileInput) fileInput.addEventListener('change', handleFileSelect);
+  if (fileInput) {
+    fileInput.addEventListener('click', (e) => e.stopPropagation());
+    fileInput.addEventListener('change', handleFileSelect);
+  }
 
   // Tabs
   if (tabBtnChat) tabBtnChat.addEventListener('click', () => switchTab('chat'));
@@ -1447,8 +1480,12 @@ async function uploadFile(file) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Upload failed');
+      let msg = 'Upload failed';
+      try {
+        const err = await res.json();
+        msg = err.detail || msg;
+      } catch (e) {}
+      throw new Error(msg);
     }
 
     if (progressBar) progressBar.style.width = '100%';
@@ -1457,6 +1494,7 @@ async function uploadFile(file) {
     const newDoc = await res.json();
     showToast(`Successfully indexed "${file.name}"!`, 'success');
 
+    state.activeDocId = newDoc.id;
     await fetchDocuments();
     await selectDocument(newDoc.id);
 
@@ -1468,11 +1506,11 @@ async function uploadFile(file) {
   } catch (error) {
     console.error('Upload error:', error);
     showToast(error.message, 'error');
-    if (uploadStatusText) uploadStatusText.textContent = 'Upload failed.';
+    if (uploadStatusText) uploadStatusText.textContent = 'Upload failed: ' + error.message;
     setTimeout(() => {
       if (uploadProgress) uploadProgress.classList.add('hidden');
       if (progressBar) progressBar.style.width = '0%';
-    }, 2000);
+    }, 3000);
   }
 }
 

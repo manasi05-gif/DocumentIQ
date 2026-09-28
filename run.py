@@ -21,8 +21,17 @@ PORT = 8000
 URL = f"http://{HOST}:{PORT}"
 
 
-def open_browser():
-    time.sleep(1.5)
+def wait_and_open_browser():
+    """Waits until the FastAPI server is responsive before opening the browser."""
+    for _ in range(30):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen(f"{URL}/api/health", timeout=1) as resp:
+                if resp.status == 200:
+                    break
+        except Exception:
+            pass
+
     print(f"\n🚀 Opening DocumentIQ Web UI in browser: {URL}\n")
     webbrowser.open(URL)
 
@@ -33,8 +42,23 @@ if __name__ == "__main__":
     print(f"   Server running at: {URL}")
     print("=" * 60)
 
-    # Launch browser in a background thread
-    threading.Thread(target=open_browser, daemon=True).start()
+    # Launch browser in a background thread once server is ready
+    threading.Thread(target=wait_and_open_browser, daemon=True).start()
 
-    # Start Uvicorn server
-    uvicorn.run("main:app", host=HOST, port=PORT, reload=True, app_dir=BACKEND_DIR)
+    # Determine if reload was explicitly requested
+    is_dev_reload = "--reload" in sys.argv
+
+    # Start Uvicorn server (reload=False by default prevents unwanted worker kills when ChromaDB or SQLite writes)
+    if is_dev_reload:
+        uvicorn.run(
+            "main:app",
+            host=HOST,
+            port=PORT,
+            reload=True,
+            reload_dirs=[BACKEND_DIR],
+            reload_includes=["*.py"],
+            reload_excludes=["*.db*", "data*", "chroma_db*", "*.sqlite*", "*.log"],
+            app_dir=BACKEND_DIR,
+        )
+    else:
+        uvicorn.run("main:app", host=HOST, port=PORT, reload=False, app_dir=BACKEND_DIR)

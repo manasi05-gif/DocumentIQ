@@ -21,10 +21,12 @@ collection = client.get_or_create_collection(
 )
 
 
-def add_chunks(doc_id: str, chunks: list[str], batch_size: int = 25) -> None:
+def add_chunks(doc_id: str, chunks: list[str], batch_size: int = 15) -> None:
     """Embeds and stores chunks for a document in small batches to stay within memory limits."""
     if not chunks:
         return
+    import time
+    import gc
 
     for i in range(0, len(chunks), batch_size):
         batch = chunks[i : i + batch_size]
@@ -34,6 +36,8 @@ def add_chunks(doc_id: str, chunks: list[str], batch_size: int = 25) -> None:
             collection.add(ids=ids, documents=batch, metadatas=metadatas)
         except Exception as e:
             print(f"Warning: vector batch {i // batch_size} error for {doc_id}: {e}")
+        time.sleep(0.05)
+        gc.collect()
 
 
 def query_chunks(doc_id: str, question: str, top_k: int = 4) -> list[str]:

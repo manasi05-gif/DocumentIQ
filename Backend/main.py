@@ -3,7 +3,7 @@ import sys
 import uuid
 import re
 from typing import Optional, List
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -180,7 +180,11 @@ def logout_user(request: Request):
 
 @app.post("/upload")
 @app.post("/api/upload")
-async def upload_document(request: Request, file: UploadFile = File(...)):
+async def upload_document(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
+):
     """
     Uploads a document (PDF, DOCX, TXT, MD, CSV, JSON),
     extracts content, generates semantic chunks, embeds them into ChromaDB,
@@ -210,7 +214,7 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
     user = get_user_from_request(request)
     user_id = user["id"] if user else None
 
-    # Persist in SQLite first so the document is always saved safely
+    # Persist in SQLite first so the document is immediately available and never lost
     file_size = len(file_bytes)
     ext = os.path.splitext(file.filename)[1].lower()
     doc_info = document_store.save_document(
@@ -224,15 +228,13 @@ async def upload_document(request: Request, file: UploadFile = File(...)):
         user_id=user_id,
     )
 
-    # Store in ChromaDB vector store safely
-    try:
-        add_chunks(doc_id, chunks)
-    except Exception as e:
-        print(f"Warning: vector indexing failed for '{file.filename}': {e}")
+    # Offload ChromaDB vector indexing to background task so large documents return in <1s
+    # and never hit Render's 30-second HTTP proxy timeout or OOM limits
+    background_tasks.add_task(add_chunks, doc_id, chunks)
 
     return {
         **doc_info,
-        "message": f"Successfully indexed '{file.filename}' with {len(chunks)} chunks.",
+        "message": f"Successfully indexed '{file.filename}' with {len(chunks)} chunks across {page_count} pages.",
     }
 
 

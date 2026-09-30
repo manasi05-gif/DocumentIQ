@@ -2166,8 +2166,18 @@ async function handleSendMessage(e) {
     });
 
     if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || 'Failed to answer question');
+      let errorMsg = `Server error (${res.status})`;
+      try {
+        const err = await res.json();
+        errorMsg = err.detail || err.message || errorMsg;
+      } catch (e) {
+        if (res.status === 504) {
+          errorMsg = 'Request timed out on server. Please try asking again.';
+        } else if (res.status === 502) {
+          errorMsg = 'Server is waking up. Please wait 10 seconds and ask again.';
+        }
+      }
+      throw new Error(errorMsg);
     }
 
     const data = await res.json();

@@ -228,9 +228,8 @@ async def upload_document(
         user_id=user_id,
     )
 
-    # Offload ChromaDB vector indexing to background task so large documents return in <1s
-    # and never hit Render's 30-second HTTP proxy timeout or OOM limits
-    background_tasks.add_task(add_chunks, doc_id, chunks)
+    # Index chunks immediately in SQLite (<10ms)
+    add_chunks(doc_id, chunks)
 
     return {
         **doc_info,

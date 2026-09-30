@@ -3589,7 +3589,7 @@ function renderCheatsheet() {
 
   sections.forEach((sec) => {
     const secBox = document.createElement('div');
-    secBox.className = 'cheatsheet-section space-y-3';
+    secBox.className = 'cheatsheet-section bg-dark-surface/30 border border-dark-border/60 rounded-xl p-4 sm:p-5 space-y-3.5';
     secBox.dataset.sectionTitle = sec.title || '';
 
     // Section Header
@@ -3605,83 +3605,88 @@ function renderCheatsheet() {
       iconName = 'alert-triangle';
       iconColor = 'text-amber-400';
     } else if (sec.type === 'key_value') {
-      iconName = 'book-a';
+      iconName = 'book-open';
       iconColor = 'text-teal-400';
     }
 
     const header = document.createElement('div');
-    header.className = 'flex items-center space-x-2 border-b border-dark-border/60 pb-2';
+    header.className = 'flex items-center space-x-2 border-b border-dark-border/60 pb-2.5';
     header.innerHTML = `
       <i data-lucide="${iconName}" class="w-4 h-4 ${iconColor}"></i>
-      <h4 class="text-xs font-bold text-slate-100 uppercase tracking-wider">${escapeHtml(sec.title || 'Section')}</h4>
+      <h4 class="text-xs sm:text-sm font-bold text-slate-100 uppercase tracking-wider">${escapeHtml(sec.title || 'Section')}</h4>
     `;
     secBox.appendChild(header);
 
     // Section Items by Type
     if (sec.type === 'code_cards') {
-      const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-3.5';
+      const list = document.createElement('div');
+      list.className = 'space-y-3.5 divide-y divide-dark-border/40';
 
-      (sec.items || []).forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'cheatsheet-card bg-dark-surface/60 border border-dark-border rounded-xl p-3.5 flex flex-col space-y-2';
-        card.dataset.searchText = `${item.name || ''} ${item.description || ''} ${item.code || ''} ${item.tip || ''}`.toLowerCase();
+      (sec.items || []).forEach((item, idx) => {
+        const point = document.createElement('div');
+        point.className = 'cheatsheet-item pt-3 first:pt-0 space-y-1.5';
+        point.dataset.searchText = `${item.name || ''} ${item.description || ''} ${item.code || ''} ${item.tip || ''}`.toLowerCase();
 
-        card.innerHTML = `
+        point.innerHTML = `
           <div class="flex items-center justify-between">
-            <span class="text-xs font-bold text-slate-100 font-mono">${escapeHtml(item.name || '')}</span>
-            <button class="copy-snippet-btn text-slate-400 hover:text-white p-1 rounded hover:bg-dark-hover transition-colors" title="Copy snippet">
-              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-            </button>
+            <div class="flex items-center space-x-2">
+              <span class="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"></span>
+              <span class="text-xs font-bold text-slate-100 font-mono">${escapeHtml(item.name || `Point ${idx + 1}`)}</span>
+            </div>
+            ${item.code ? `
+              <button class="copy-snippet-btn text-slate-400 hover:text-white p-1 rounded hover:bg-dark-hover transition-colors" title="Copy code">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              </button>
+            ` : ''}
           </div>
-          ${item.description ? `<p class="text-xs text-slate-400 leading-relaxed">${escapeHtml(item.description)}</p>` : ''}
+          ${item.description ? `<p class="text-xs text-slate-300 leading-relaxed pl-3.5">${escapeHtml(item.description)}</p>` : ''}
           ${item.code ? `
-            <pre class="bg-dark-bg p-2.5 rounded-lg border border-dark-border/80 text-xs font-mono text-emerald-300 overflow-x-auto select-text leading-relaxed"><code>${escapeHtml(item.code)}</code></pre>
+            <pre class="bg-dark-bg p-2.5 rounded-lg border border-dark-border/80 text-xs font-mono text-emerald-300 overflow-x-auto select-text leading-relaxed ml-3.5 my-1"><code>${escapeHtml(item.code)}</code></pre>
           ` : ''}
           ${item.tip ? `
-            <div class="flex items-center space-x-1.5 text-[11px] text-amber-300/90 pt-1">
+            <div class="flex items-center space-x-1.5 text-[11px] text-amber-300/90 pl-3.5 pt-0.5">
               <i data-lucide="lightbulb" class="w-3 h-3 text-amber-400 flex-shrink-0"></i>
               <span>${escapeHtml(item.tip)}</span>
             </div>
           ` : ''}
         `;
 
-        const copyBtn = card.querySelector('.copy-snippet-btn');
+        const copyBtn = point.querySelector('.copy-snippet-btn');
         if (copyBtn && item.code) {
           copyBtn.addEventListener('click', () => {
             navigator.clipboard.writeText(item.code)
-              .then(() => showToast(`Copied ${item.name || 'code'} to clipboard!`, 'success'))
+              .then(() => showToast(`Copied to clipboard!`, 'success'))
               .catch(() => showToast('Failed to copy', 'error'));
           });
         }
 
-        grid.appendChild(card);
+        list.appendChild(point);
       });
-      secBox.appendChild(grid);
+      secBox.appendChild(list);
 
     } else if (sec.type === 'key_value') {
-      const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3';
+      const list = document.createElement('ul');
+      list.className = 'space-y-2.5 my-1';
 
       (sec.items || []).forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'cheatsheet-card bg-dark-surface/60 border border-dark-border rounded-xl p-3 flex flex-col justify-between';
-        card.dataset.searchText = `${item.term || ''} ${item.definition || ''}`.toLowerCase();
+        const li = document.createElement('li');
+        li.className = 'cheatsheet-item flex items-start space-x-2.5 text-xs text-slate-200 leading-relaxed';
+        li.dataset.searchText = `${item.term || ''} ${item.definition || ''}`.toLowerCase();
 
-        card.innerHTML = `
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="font-mono font-bold text-emerald-300 text-xs">${escapeHtml(item.term || '')}</span>
-            <span class="text-[10px] text-slate-500 uppercase tracking-widest font-semibold">Term</span>
+        li.innerHTML = `
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-teal-400 mt-1.5 flex-shrink-0"></span>
+          <div class="space-y-0.5">
+            <strong class="font-bold text-teal-300 text-xs font-mono mr-1.5">${escapeHtml(item.term || '')}:</strong>
+            <span class="text-slate-300">${escapeHtml(item.definition || '')}</span>
           </div>
-          <p class="text-xs text-slate-300 leading-relaxed">${escapeHtml(item.definition || '')}</p>
         `;
-        grid.appendChild(card);
+        list.appendChild(li);
       });
-      secBox.appendChild(grid);
+      secBox.appendChild(list);
 
     } else if (sec.type === 'table') {
       const tableWrap = document.createElement('div');
-      tableWrap.className = 'cheatsheet-card bg-dark-surface/40 border border-dark-border rounded-xl overflow-x-auto';
+      tableWrap.className = 'cheatsheet-item bg-dark-surface/40 border border-dark-border rounded-xl overflow-x-auto';
       tableWrap.dataset.searchText = `${(sec.headers || []).join(' ')} ${(sec.rows || []).map(r => r.join(' ')).join(' ')}`.toLowerCase();
 
       const headersHtml = (sec.headers || []).map(h => `<th class="px-4 py-2.5 text-left text-xs font-bold text-slate-200 uppercase tracking-wider bg-dark-surface/80 border-b border-dark-border">${escapeHtml(h)}</th>`).join('');
@@ -3699,24 +3704,24 @@ function renderCheatsheet() {
       secBox.appendChild(tableWrap);
 
     } else if (sec.type === 'warnings') {
-      const grid = document.createElement('div');
-      grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-3.5';
+      const list = document.createElement('div');
+      list.className = 'space-y-2.5 my-1';
 
       (sec.items || []).forEach((item) => {
-        const card = document.createElement('div');
-        card.className = 'cheatsheet-card bg-amber-500/5 border border-amber-500/30 rounded-xl p-3.5 flex flex-col space-y-1.5';
-        card.dataset.searchText = `${item.title || ''} ${item.detail || ''}`.toLowerCase();
+        const callout = document.createElement('div');
+        callout.className = 'cheatsheet-item p-3.5 rounded-xl bg-amber-500/5 border-l-4 border-amber-500 text-xs text-slate-300 space-y-1';
+        callout.dataset.searchText = `${item.title || ''} ${item.detail || ''}`.toLowerCase();
 
-        card.innerHTML = `
-          <div class="flex items-center space-x-2 text-amber-300 font-semibold text-xs">
-            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 flex-shrink-0"></i>
+        callout.innerHTML = `
+          <div class="flex items-center space-x-2 text-amber-300 font-semibold">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-amber-400 flex-shrink-0"></i>
             <span>${escapeHtml(item.title || 'Important Notice')}</span>
           </div>
-          <p class="text-xs text-slate-300 leading-relaxed pl-6">${escapeHtml(item.detail || '')}</p>
+          <p class="text-xs text-slate-300 leading-relaxed pl-5">${escapeHtml(item.detail || '')}</p>
         `;
-        grid.appendChild(card);
+        list.appendChild(callout);
       });
-      secBox.appendChild(grid);
+      secBox.appendChild(list);
     }
 
     cheatsheetSections.appendChild(secBox);
@@ -3730,20 +3735,20 @@ function handleCheatsheetSearch(e) {
   const query = (e.target.value || '').trim().toLowerCase();
   state.cheatsheetFilter = query;
 
-  const cards = document.querySelectorAll('.cheatsheet-card');
-  cards.forEach((card) => {
-    const text = card.dataset.searchText || '';
+  const items = document.querySelectorAll('.cheatsheet-item, .cheatsheet-card');
+  items.forEach((item) => {
+    const text = item.dataset.searchText || '';
     if (!query || text.includes(query)) {
-      card.classList.remove('hidden');
+      item.classList.remove('hidden');
     } else {
-      card.classList.add('hidden');
+      item.classList.add('hidden');
     }
   });
 
   const sections = document.querySelectorAll('.cheatsheet-section');
   sections.forEach((sec) => {
-    const visibleCards = sec.querySelectorAll('.cheatsheet-card:not(.hidden)');
-    if (visibleCards.length === 0 && query) {
+    const visibleItems = sec.querySelectorAll('.cheatsheet-item:not(.hidden), .cheatsheet-card:not(.hidden)');
+    if (visibleItems.length === 0 && query) {
       sec.classList.add('hidden');
     } else {
       sec.classList.remove('hidden');

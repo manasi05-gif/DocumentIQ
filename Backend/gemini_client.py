@@ -582,12 +582,13 @@ def generate_cheatsheet(text: str, focus: str = "comprehensive", language: str =
 
     system_prompt = (
         "You are an elite educational researcher, executive technical writer, and exam cheat sheet creator.\n"
-        f"Create an ultra-dense, comprehensive, high-value Cheat Sheet prioritizing {focus_desc}.\n\n"
+        f"Create an ultra-dense, comprehensive, high-value Cheat Sheet prioritizing {focus_desc}.\n"
+        "WRITING STYLE: Write substantive, clear paragraphs and rich bullet points rather than fragmented or shallow text. Explain concepts and rules thoroughly with practical context.\n\n"
         "OUTPUT FORMAT REQUIREMENT:\n"
         "Return ONLY a valid JSON object strictly matching this structure without markdown code fences:\n"
         "{\n"
         '  "title": "Master Subject Cheat Sheet",\n'
-        '  "overview": "Condensed 1-2 sentence core thesis and scope.",\n'
+        '  "overview": "Comprehensive 1-2 sentence core thesis and scope.",\n'
         '  "key_metrics": [\n'
         '    {"label": "Key Modules", "value": "4"},\n'
         '    {"label": "Essential Rules", "value": "12+"}\n'
@@ -595,25 +596,25 @@ def generate_cheatsheet(text: str, focus: str = "comprehensive", language: str =
         '  "sections": [\n'
         '    {\n'
         '      "id": "commands",\n'
-        '      "title": "Core Commands & Syntax",\n'
+        '      "title": "Core Rules, Commands & Formulas",\n'
         '      "type": "code_cards",\n'
         '      "items": [\n'
         '        {\n'
-        '          "name": "Command / Formula Title",\n'
-        '          "description": "Short explanation of usage",\n'
-        '          "code": "EXACT_COMMAND_OR_SYNTAX_HERE",\n'
-        '          "tip": "Crucial tip or best practice"\n'
+        '          "name": "Point / Rule / Formula Title",\n'
+        '          "description": "Thorough explanatory paragraph detailing usage, principles, and behavior",\n'
+        '          "code": "EXACT_COMMAND_FORMULA_OR_CODE_HERE",\n'
+        '          "tip": "Actionable best practice, exam trick, or memory anchor"\n'
         '        }\n'
         '      ]\n'
         '    },\n'
         '    {\n'
         '      "id": "acronyms",\n'
-        '      "title": "Acronyms & Essential Terminology",\n'
+        '      "title": "Core Definitions & Essential Terminology",\n'
         '      "type": "key_value",\n'
         '      "items": [\n'
         '        {\n'
-        '          "term": "Term or Acronym",\n'
-        '          "definition": "Clear concise meaning and full form"\n'
+        '          "term": "Term or Concept",\n'
+        '          "definition": "Clear, detailed definition paragraph with practical significance"\n'
         '        }\n'
         '      ]\n'
         '    },\n'
@@ -633,8 +634,8 @@ def generate_cheatsheet(text: str, focus: str = "comprehensive", language: str =
         '      "type": "warnings",\n'
         '      "items": [\n'
         '        {\n'
-        '          "title": "Trap Title (e.g. Difference between X and Y)",\n'
-        '          "detail": "Actionable explanation of why this causes errors or test failures"\n'
+        '          "title": "Common Trap or Gotcha Title",\n'
+        '          "detail": "Actionable explanatory paragraph on why this causes confusion, errors, or exam deductions"\n'
         '        }\n'
         '      ]\n'
         '    }\n'

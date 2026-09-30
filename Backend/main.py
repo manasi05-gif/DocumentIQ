@@ -119,6 +119,7 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str
     password: str
+    name: Optional[str] = None
 
 
 @app.post("/api/auth/register")
@@ -141,10 +142,26 @@ def register_user(req: RegisterRequest):
 
 @app.post("/api/auth/login")
 def login_user(req: LoginRequest):
-    """Verifies credentials and returns a session token."""
-    user = document_store.authenticate_user(req.email, req.password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password.")
+    """Verifies credentials and returns a session token. Supports auto-restoration across ephemeral restarts."""
+    email_clean = req.email.strip().lower()
+    existing_user = document_store.get_user_by_email(email_clean)
+
+    if existing_user:
+        # User exists in database: verify password strictly
+        if not document_store.verify_password(req.password, existing_user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Incorrect password. Please try again.")
+        user = {
+            "id": existing_user["id"],
+            "name": existing_user["name"],
+            "email": existing_user["email"],
+            "created_at": existing_user["created_at"],
+        }
+    else:
+        # User does not exist in SQLite (e.g. server was redeployed or restarted on free-tier ephemeral disk).
+        # Seamlessly auto-restore their account so user NEVER has to re-register!
+        default_name = req.name.strip() if req.name and req.name.strip() else email_clean.split("@")[0].capitalize()
+        user = document_store.create_user(default_name, email_clean, req.password)
+
     token = document_store.create_session(user["id"])
     return {
         "status": "ok",

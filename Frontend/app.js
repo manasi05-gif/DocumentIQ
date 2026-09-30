@@ -702,11 +702,13 @@ async function handleLogin(e) {
   if (loginSubmitBtn) loginSubmitBtn.disabled = true;
   if (loginError) loginError.classList.add('hidden');
 
+  const savedName = localStorage.getItem('doc_saved_name') || '';
+
   try {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, name: savedName }),
     });
 
     const data = await res.json();
@@ -718,12 +720,8 @@ async function handleLogin(e) {
     state.currentUser = data.user;
     state.guestMode = false;
     localStorage.setItem('doc_auth_token', data.token);
-
-    if (rememberMeCheckbox && rememberMeCheckbox.checked) {
-      localStorage.setItem('doc_saved_email', email);
-    } else {
-      localStorage.removeItem('doc_saved_email');
-    }
+    localStorage.setItem('doc_saved_name', data.user.name);
+    localStorage.setItem('doc_saved_email', email);
 
     updateUserUI();
     showToast(`Welcome back, ${data.user.name}!`, 'success');
@@ -785,6 +783,7 @@ async function handleRegister(e) {
     state.currentUser = data.user;
     state.guestMode = false;
     localStorage.setItem('doc_auth_token', data.token);
+    localStorage.setItem('doc_saved_name', data.user.name);
     localStorage.setItem('doc_saved_email', email);
 
     updateUserUI();

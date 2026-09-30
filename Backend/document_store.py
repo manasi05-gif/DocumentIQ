@@ -231,6 +231,20 @@ def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
         }
 
 
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieves full user record by email."""
+    if not email:
+        return None
+    email_clean = email.strip().lower()
+    with get_connection() as conn:
+        cur = conn.execute(
+            "SELECT id, name, email, password_hash, created_at FROM users WHERE email = ?",
+            (email_clean,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
 def create_session(user_id: str, days: int = 30) -> str:
     """Creates a persistent login session token."""
     token = secrets.token_urlsafe(32)

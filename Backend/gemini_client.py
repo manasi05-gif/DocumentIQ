@@ -94,14 +94,82 @@ def extract_json(text: str) -> Any:
     return json.loads(text)
 
 
-def summarize_text(text: str, summary_type: str = "bullet") -> str:
+def detect_language(text: str) -> str:
     """
-    Summarize document text based on requested format.
-    Supports all academic domains (Medical, Law, Commerce, STEM, Humanities, General).
+    Detects if text is primarily Hindi, Marathi, or English.
+    Distinguishes Marathi from Hindi using distinctive vocabulary, grammar, and character markers (e.g. ळ).
+    """
+    if not text:
+        return "english"
+
+    devanagari_chars = len(re.findall(r"[\u0900-\u097F]", text))
+    total_chars = max(1, len(re.findall(r"\w", text)))
+
+    # If less than 8% Devanagari characters, consider English
+    if devanagari_chars / total_chars < 0.08:
+        return "english"
+
+    # Marathi-specific letter 'ळ' (\u0933) is exclusively used in Marathi (absent in modern standard Hindi)
+    if "ळ" in text:
+        return "marathi"
+
+    marathi_markers = {"आहे", "आहेत", "आणि", "किंवा", "वापर", "केले", "करणे", "याचे", "त्याचे", "झाले", "होते", "नाही", "म्हणजे", "कसे", "काय", "केल्यास", "यांच्या", "असून", "तयार", "घटक", "माहिती", "दृष्टीने", "बद्दल", "केली", "जाते", "येथे", "सर्व"}
+    hindi_markers = {"है", "हैं", "और", "या", "किया", "करना", "इसका", "उसका", "हुआ", "होते", "नहीं", "अर्थात", "कैसे", "क्या", "करने", "इनके", "होकर", "बनाया", "बारे", "विवरण", "संबंध", "किए", "जाता", "यहाँ", "सभी"}
+
+    words = set(re.findall(r"[\u0900-\u097F]{2,}", text.lower()))
+    m_score = len(words.intersection(marathi_markers))
+    h_score = len(words.intersection(hindi_markers))
+
+    if m_score > h_score:
+        return "marathi"
+    elif h_score > m_score:
+        return "hindi"
+
+    if any(w in text for w in ["आहे", "आणि", "काय", "म्हणजे", "केले"]):
+        return "marathi"
+    return "hindi"
+
+
+def get_language_directive(target_lang: str) -> str:
+    """
+    Returns strict, unambiguous prompting directives for English, Hindi, or Marathi generation.
+    """
+    if target_lang == "marathi":
+        return (
+            "\n\n======================================================\n"
+            "CRITICAL LANGUAGE MANDATE — MARATHI (मराठी):\n"
+            "You MUST generate the entire output strictly in MARATHI (मराठीत उत्तर द्या).\n"
+            "Use natural, authentic, grammatically correct Marathi (उदा. माहिती, वापर, विश्लेषण, वैशिष्ट्ये, घटक, निष्कर्ष, इ.).\n"
+            "Do NOT switch to Hindi or English. Technical terms or standard abbreviations (e.g. CIA, TCP, IP) may be placed in parentheses (e.g. गुप्तता (Confidentiality)).\n"
+            "======================================================\n"
+        )
+    elif target_lang == "hindi":
+        return (
+            "\n\n======================================================\n"
+            "CRITICAL LANGUAGE MANDATE — HINDI (हिन्दी):\n"
+            "You MUST generate the entire output strictly in HINDI (हिन्दी में उत्तर दें).\n"
+            "Use natural, authentic, grammatically correct Hindi (उदा. सूचना, उपयोग, विश्लेषण, विशेषताएँ, घटक, निष्कर्ष, आदि).\n"
+            "Do NOT switch to English. Technical terms or standard abbreviations (e.g. CIA, TCP, IP) may be placed in parentheses (e.g. गोपनीयता (Confidentiality)).\n"
+            "======================================================\n"
+        )
+    else:
+        return (
+            "\n\nCRITICAL LANGUAGE MANDATE — ENGLISH:\n"
+            "Write the response in clear, professional English (or natural Hinglish if the user explicitly writes in conversational Hinglish).\n"
+        )
+
+
+def summarize_text(text: str, summary_type: str = "bullet", language: str = "auto") -> str:
+    """
+    Summarize document text based on requested format and language.
+    Supports Hindi, Marathi, and English with auto-detection.
     """
     truncated_text = text[:120000]
     if len(text) > 120000:
         truncated_text += "\n\n[... Remaining content truncated for summary ...]"
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     prompts = {
         "bullet": (
@@ -111,6 +179,7 @@ def summarize_text(text: str, summary_type: str = "bullet") -> str:
             "1. **Core Highlights**: 4-6 detailed bullet points capturing key facts, numbers, sections/formulas, and findings.\n"
             "2. **Executive Overview**: A crisp 2-3 sentence wrap-up.\n"
             "Format cleanly in Markdown. If the text contains mathematical, chemical, or physical formulas, format them in standard LaTeX ($...$ for inline, $$...$$ for block)."
+            f"{lang_directive}"
         ),
         "executive": (
             "You are a senior academic and executive advisor. Create a high-impact Executive Summary of the document:\n"
@@ -119,13 +188,14 @@ def summarize_text(text: str, summary_type: str = "bullet") -> str:
             "- **Risks, Gotchas & Limitations**\n"
             "- **Bottom Line Recommendation & Key Takeaway**\n"
             "Use professional, authoritative Markdown formatting with LaTeX math delimiters ($...$) where applicable."
+            f"{lang_directive}"
         ),
         "action_items": (
             "You are an academic project and study specialist. Review the document and extract:\n"
             "- **Key Action Items & Study Directives** (what must be memorized, calculated, or applied)\n"
             "- **Critical Decisions & Core Principles**\n"
             "- **Next Steps & Practical Application**\n"
-            "If no explicit action items exist, synthesize actionable next study/analysis steps based on the text."
+            f"{lang_directive}"
         ),
         "deep": (
             "You are an in-depth analytical researcher and university professor. Produce an exhaustive breakdown:\n"
@@ -133,6 +203,7 @@ def summarize_text(text: str, summary_type: str = "bullet") -> str:
             "- **Evidence, Numerical Metrics, Formulas & Case Citations**\n"
             "- **Critical Evaluation & Synthesis**\n"
             "Use comprehensive Markdown with tables, lists, and LaTeX equations ($...$) where appropriate."
+            f"{lang_directive}"
         ),
     }
 
@@ -144,24 +215,30 @@ def answer_question(
     context: str,
     question: str,
     chat_history: Optional[List[Dict[str, str]]] = None,
+    language: str = "auto",
 ) -> str:
     """
     Answers a question grounded strictly in the provided document context chunks.
-    Universally adaptable for students across all academic streams:
-    - Medical/MBBS/NEET (Clinical signs, symptoms, pharmacology, pathophysiology)
-    - Law/Judiciary (Statutory sections, case precedents, legal doctrines, remedies)
-    - Commerce/CA/Finance (Accounting standards, ratios, journal entries, tax rules)
-    - Engineering/STEM (Mathematical equations, algorithms, scientific laws, units)
-    - Humanities/UPSC (Timelines, thinkers, cause-and-effect, social/political analysis)
+    Fully supports Hindi, Marathi, and English.
     """
+    if language and language.lower() in ["hindi", "marathi", "english"]:
+        target_lang = language.lower()
+    else:
+        q_lang = detect_language(question)
+        if q_lang in ["hindi", "marathi"]:
+            target_lang = q_lang
+        else:
+            c_lang = detect_language(context)
+            target_lang = c_lang if c_lang in ["hindi", "marathi"] else "english"
+
+    lang_directive = get_language_directive(target_lang)
+
     system_prompt = (
         "You are an intelligent, highly versatile Academic & Document Assistant designed for students across ANY field.\n"
         "Instructions:\n"
         "1. GROUNDING: Answer the user's question using ONLY the provided Document Context excerpts below. "
         "Do not invent facts not supported by the document.\n"
-        "2. INSUFFICIENT CONTEXT: If the answer cannot be determined from the context, state: "
-        "'The document does not provide enough information to answer this specific question.' "
-        "and mention any closely related details that ARE present in the document.\n"
+        "2. INSUFFICIENT CONTEXT: If the answer cannot be determined from the context, state that the document does not contain enough information to answer this specific question (stated in the target language).\n"
         "3. DOMAIN ADAPTATION:\n"
         "   - For Medical/Biology: Emphasize clinical significance, mechanisms, contraindications, and normal values.\n"
         "   - For Law/Judiciary: Accurately cite statutory sections, articles, case laws, and legal principles.\n"
@@ -169,9 +246,9 @@ def answer_question(
         "   - For Engineering/STEM: Explain formulas step-by-step, state variable definitions, and include code/algorithms if present.\n"
         "   - For Humanities/UPSC: Clarify chronological dates, cause-and-effect, and multidimensional perspectives.\n"
         "4. LATEX MATH & FORMULAS: Whenever writing mathematical, scientific, physical, or financial formulas, ALWAYS use standard LaTeX delimiters: inline `$formula$` or display `$$formula$$` so they render properly in KaTeX.\n"
-        "5. LANGUAGE & TONE FLEXIBILITY: If the user asks in Hindi or Hinglish (e.g. 'is point ko explain karo', 'formula kya hai'), reply in natural, fluent, easy-to-understand Hinglish. If in English, reply in English.\n"
-        "6. FEYNMAN TECHNIQUE / EXPLAIN SIMPLY: If the user asks to explain simply or like a beginner, use intuitive real-world analogies and breakdown complex jargon.\n"
-        "7. FORMATTING: Use clean Markdown (bullet points, bold key terms, tables, callouts) for high readability."
+        "5. FEYNMAN TECHNIQUE / EXPLAIN SIMPLY: If the user asks to explain simply or like a beginner, use intuitive real-world analogies and breakdown complex jargon.\n"
+        "6. FORMATTING: Use clean Markdown (bullet points, bold key terms, tables, callouts) for high readability."
+        f"{lang_directive}"
     )
 
     history_str = ""
@@ -199,12 +276,16 @@ def generate_quiz(
     num_questions: int = 5,
     difficulty: str = "medium",
     topic: Optional[str] = None,
+    language: str = "auto",
 ) -> List[Dict[str, Any]]:
     """
     Generates high-yield multiple choice questions (MCQs) from document text.
-    Supports topic-specific filtering, adaptive difficulty, topic tagging, and improvement tips for weakness diagnosis.
+    Supports topic-specific filtering, adaptive difficulty, topic tagging, improvement tips, and full Hindi/Marathi/English localization.
     """
     truncated = text[:80000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     topic_instruction = ""
     if topic and topic.strip() and topic.strip().lower() != "all":
@@ -237,6 +318,7 @@ def generate_quiz(
         '    "improvement_tip": "Specific, actionable tip on what concept or rule to review if answered incorrectly."\n'
         "  }\n"
         "]"
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nGenerate {num_questions} diagnostic MCQs in JSON format."
@@ -267,18 +349,22 @@ def generate_quiz(
         raise ValueError(f"Failed to parse quiz questions: {str(e)}")
 
 
-def extract_document_topics(text: str) -> List[str]:
+def extract_document_topics(text: str, language: str = "auto") -> List[str]:
     """
     Extracts 6 to 10 distinct, high-yield conceptual topics or modules from the document.
-    Enables topic-specific quizzes and user knowledge radar.
+    Enables topic-specific quizzes and user knowledge radar. Supports Hindi, Marathi, and English.
     """
     truncated = text[:45000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     system_prompt = (
         "You are an educational syllabus architect.\n"
         "Analyze the document text and extract a clean list of 6 to 10 distinct, major conceptual topics, themes, or modules covered.\n"
         "Each topic should be clear, concise (2 to 4 words), and representative of a key area a student should master.\n"
         "Return ONLY a valid JSON list of strings, for example: [\"Topic A\", \"Topic B\", \"Topic C\"]."
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nExtract the list of key topics in JSON format."
@@ -301,12 +387,16 @@ def generate_targeted_drill(
     topic: str,
     level: str = "beginner",
     num_questions: int = 3,
+    language: str = "auto",
 ) -> List[Dict[str, Any]]:
     """
     Generates an adaptive targeted ladder drill for a specific weak topic.
     level can be 'beginner', 'intermediate', or 'advanced'.
     """
     truncated = text[:60000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     level_guide = {
         "beginner": "BEGINNER LEVEL: Core definitions, basic syntax, foundational rules, simple recognition, and intuitive recall.",
@@ -335,6 +425,7 @@ def generate_targeted_drill(
         '    "improvement_tip": "Quick memory rule or mental anchor to never forget this concept."\n'
         "  }\n"
         "]"
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nGenerate {num_questions} targeted {level} questions for topic '{topic}' in JSON format."
@@ -362,12 +453,15 @@ def generate_targeted_drill(
         raise ValueError(f"Failed to generate targeted drill: {str(e)}")
 
 
-def generate_flashcards(text: str, count: int = 8) -> List[Dict[str, Any]]:
+def generate_flashcards(text: str, count: int = 8, language: str = "auto") -> List[Dict[str, Any]]:
     """
     Generates revision flashcards (front: term/concept/formula, back: definition/explanation).
-    Supports all academic domains with LaTeX math delimiters.
+    Supports all academic domains with LaTeX math delimiters and multilingual localization.
     """
     truncated = text[:80000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     system_prompt = (
         "You are a cognitive learning, spaced-repetition, and memory specialist.\n"
@@ -383,6 +477,7 @@ def generate_flashcards(text: str, count: int = 8) -> List[Dict[str, Any]]:
         '    "back": "Clear, concise definition, calculation, or answer."\n'
         "  }\n"
         "]"
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nGenerate {count} flashcards in JSON format."
@@ -400,12 +495,16 @@ def generate_flashcards(text: str, count: int = 8) -> List[Dict[str, Any]]:
         raise ValueError(f"Failed to parse flashcards: {str(e)}")
 
 
-def generate_mindmap(text: str) -> str:
+def generate_mindmap(text: str, language: str = "auto") -> str:
     """
     Generates clean Mermaid.js diagram syntax representing the concept hierarchy of the document.
     Adapts structure for Medical, Law, Commerce, STEM, Humanities, and General subjects.
+    Supports Hindi, Marathi, and English.
     """
     truncated = text[:70000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     system_prompt = (
         "You are an expert educational visualizer and concept map architect.\n"
@@ -427,6 +526,7 @@ def generate_mindmap(text: str) -> str:
         "     n1 --> n2\n"
         "   end\n"
         "6. Return ONLY the raw Mermaid diagram syntax, without introductory text or explanations."
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nGenerate Mermaid flowchart syntax."
@@ -456,12 +556,15 @@ def generate_mindmap(text: str) -> str:
     return clean_code
 
 
-def generate_cheatsheet(text: str, focus: str = "comprehensive") -> Dict[str, Any]:
+def generate_cheatsheet(text: str, focus: str = "comprehensive", language: str = "auto") -> Dict[str, Any]:
     """
     Extracts a high-density, multi-section Cheat Sheet from the document.
     Provides domain-specialized sections for Medical, Law, Commerce, STEM, Humanities, and General subjects.
     """
     truncated = text[:80000]
+
+    target_lang = language.lower() if language and language != "auto" else detect_language(text)
+    lang_directive = get_language_directive(target_lang)
 
     domain_focus_map = {
         "medical": "clinical symptoms, diagnostic criteria, pharmacology/drug mechanisms, contraindications, and high-yield NEET/USMLE traps",
@@ -537,6 +640,7 @@ def generate_cheatsheet(text: str, focus: str = "comprehensive") -> Dict[str, An
         '    }\n'
         '  ]\n'
         "}\n"
+        f"{lang_directive}"
     )
 
     prompt = f"--- DOCUMENT TEXT ---\n{truncated}\n--- END DOCUMENT TEXT ---\nGenerate the high-density cheat sheet JSON."

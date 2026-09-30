@@ -94,6 +94,14 @@
         </button>
       </div>
 
+      <!-- Multilingual Language Selector (Auto, English, Hindi, Marathi) -->
+      <div id="languageSelector" class="flex items-center bg-dark-surface border border-dark-border rounded-lg p-0.5 text-xs shadow-sm" title="Select Output Language">
+        <button type="button" data-lang="auto" class="lang-btn px-2 py-1 rounded font-medium transition-all bg-brand-600 text-white shadow-sm" title="Auto-Detect (Hindi / Marathi / English)">🌐 Auto</button>
+        <button type="button" data-lang="en" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="English">EN</button>
+        <button type="button" data-lang="hi" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="हिन्दी (Hindi)">हिन्दी</button>
+        <button type="button" data-lang="mr" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="मराठी (Marathi)">मराठी</button>
+      </div>
+
       <div class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
         <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
         <span id="systemStatus">Gemini 3.8 / Flash</span>
@@ -1498,6 +1506,6 @@
     <span id="toastMsg">Notification message</span>
   </div>
 
-  <script src="/static/app.js?v=15.0"></script>
+  <script src="/static/app.js?v=16.0"></script>
 </body>
 </html>

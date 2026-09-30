@@ -53,7 +53,7 @@ class BM25Ranker:
 
     @staticmethod
     def tokenize(text: str) -> List[str]:
-        return re.findall(r"\b[a-zA-Z0-9_-]{2,}\b", text.lower())
+        return re.findall(r"[\w\u0900-\u097F]{2,}", text.lower(), re.UNICODE)
 
     def rank(self, chunks: List[Dict[str, Any]], query: str, top_k: int = 4) -> List[Dict[str, Any]]:
         if not chunks:

@@ -20,6 +20,7 @@ const state = {
   readerMode: 'formatted', // 'formatted' | 'raw'
   isGenerating: false,
   activeDomain: localStorage.getItem('doc_domain') || 'general',
+  activeLanguage: localStorage.getItem('doc_language') || 'auto',
 
   // Authentication State
   currentUser: null,
@@ -834,12 +835,44 @@ async function handleLogout() {
 document.addEventListener('DOMContentLoaded', async () => {
   initIcons();
   initAcademicDomain();
+  initLanguageSelector();
   setupEventListeners();
   setupVoiceRecognition();
   checkHealth();
   await initAuth();
   await fetchDocuments();
 });
+
+
+function initLanguageSelector() {
+  const langBtns = document.querySelectorAll('.lang-btn');
+  if (!langBtns.length) return;
+
+  function updateLangUI(currentLang) {
+    langBtns.forEach(btn => {
+      if (btn.dataset.lang === currentLang) {
+        btn.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
+        btn.classList.remove('text-slate-400', 'hover:text-slate-200');
+      } else {
+        btn.classList.remove('bg-brand-600', 'text-white', 'shadow-sm');
+        btn.classList.add('text-slate-400', 'hover:text-slate-200');
+      }
+    });
+  }
+
+  updateLangUI(state.activeLanguage);
+
+  langBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selected = btn.dataset.lang || 'auto';
+      state.activeLanguage = selected;
+      localStorage.setItem('doc_language', selected);
+      updateLangUI(selected);
+      const label = selected === 'hi' ? 'हिन्दी (Hindi)' : selected === 'mr' ? 'मराठी (Marathi)' : selected === 'en' ? 'English' : 'Auto-Detect (स्वचालित)';
+      showToast(`Language set to ${label}`, 'info');
+    });
+  });
+}
 
 
 function initIcons() {
@@ -2161,6 +2194,7 @@ async function handleSendMessage(e) {
         session_id: state.activeSessionId,
         question: question,
         top_k: 4,
+        language: state.activeLanguage,
       }),
     });
 
@@ -2342,6 +2376,7 @@ async function handleGenerateSummary() {
       body: JSON.stringify({
         doc_id: state.activeDocId,
         summary_type: state.summaryType,
+        language: state.activeLanguage,
       }),
     });
 
@@ -2546,6 +2581,7 @@ async function handleStartQuiz() {
         num_questions: numQ,
         difficulty: diff,
         topic: selectedTopic,
+        language: state.activeLanguage,
       }),
     });
 
@@ -2960,6 +2996,7 @@ async function startTargetedDrill(topic, level = 'beginner') {
         topic: topic,
         level: level,
         num_questions: 3,
+        language: state.activeLanguage,
       }),
     });
 
@@ -3391,6 +3428,7 @@ async function handleStartFlashcards() {
       body: JSON.stringify({
         doc_id: state.activeDocId,
         count: count,
+        language: state.activeLanguage,
       }),
     });
 
@@ -3484,6 +3522,7 @@ async function handleStartCheatsheet() {
       body: JSON.stringify({
         doc_id: state.activeDocId,
         focus: focus,
+        language: state.activeLanguage,
       }),
     });
 
@@ -3845,7 +3884,10 @@ async function handleGenerateMindmap() {
     const res = await fetch('/api/mindmap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ doc_id: state.activeDocId }),
+      body: JSON.stringify({
+        doc_id: state.activeDocId,
+        language: state.activeLanguage,
+      }),
     });
 
     if (!res.ok) {
@@ -4276,7 +4318,18 @@ function setupVoiceRecognition() {
       if (state.isListening) {
         recognition.stop();
       } else {
-        recognition.start();
+        if (state.activeLanguage === 'hi') {
+          recognition.lang = 'hi-IN';
+        } else if (state.activeLanguage === 'mr') {
+          recognition.lang = 'mr-IN';
+        } else {
+          recognition.lang = 'en-US';
+        }
+        try {
+          recognition.start();
+        } catch (e) {
+          console.warn('Voice start warning:', e);
+        }
       }
     });
   }
@@ -4299,6 +4352,16 @@ function playAudio(text, title = 'Document') {
   const utterance = new SpeechSynthesisUtterance(cleanText);
   utterance.rate = state.speechRate || 1.0;
   utterance.pitch = 1.0;
+
+  // Regional voice selection for Devanagari text (Hindi / Marathi)
+  const isDevanagari = /[\u0900-\u097F]/.test(cleanText);
+  if (isDevanagari) {
+    const voices = window.speechSynthesis.getVoices();
+    const regionalVoice = voices.find(v => v.lang && (v.lang.startsWith('mr') || v.lang.startsWith('hi') || v.lang.includes('IN')));
+    if (regionalVoice) {
+      utterance.voice = regionalVoice;
+    }
+  }
 
   utterance.onstart = () => {
     state.isSpeechPaused = false;

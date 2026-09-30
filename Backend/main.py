@@ -294,6 +294,7 @@ def delete_document_endpoint(doc_id: str, request: Request):
 class SummarizeRequest(BaseModel):
     doc_id: str
     summary_type: Optional[str] = "bullet"  # 'bullet', 'executive', 'action_items', 'deep'
+    language: Optional[str] = "auto"  # 'auto', 'hindi', 'marathi', 'english'
 
 
 @app.post("/summarize")
@@ -302,18 +303,24 @@ def summarize(req: SummarizeRequest):
     """
     Generates an AI summary of the document using Gemini.
     Supported types: bullet, executive, action_items, deep.
+    Supports Hindi, Marathi, and English localization.
     """
     doc = document_store.get_document(req.doc_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found. Upload a document first.")
 
     try:
-        summary = summarize_text(doc["content"], summary_type=req.summary_type or "bullet")
+        summary = summarize_text(
+            doc["content"],
+            summary_type=req.summary_type or "bullet",
+            language=req.language or "auto",
+        )
         document_store.update_summary(req.doc_id, summary, summary_type=req.summary_type or "bullet")
         return {
             "doc_id": req.doc_id,
             "filename": doc["filename"],
             "summary_type": req.summary_type or "bullet",
+            "language": req.language or "auto",
             "summary": summary,
         }
     except Exception as e:
@@ -331,6 +338,7 @@ class AskRequest(BaseModel):
     question: str
     session_id: Optional[str] = None
     top_k: Optional[int] = 4
+    language: Optional[str] = "auto"  # 'auto', 'hindi', 'marathi', 'english'
 
 
 class CreateSessionRequest(BaseModel):
@@ -382,8 +390,8 @@ def delete_session_endpoint(session_id: str):
 @app.post("/api/ask")
 def ask(req: AskRequest):
     """
-    Answers a question about the document using semantic search (ChromaDB)
-    and context-grounded response generation (Gemini) within the specified chat session.
+    Answers a question about the document using semantic search (BM25)
+    and context-grounded response generation (Gemini) with Hindi, Marathi, and English support.
     """
     doc = document_store.get_document(req.doc_id)
     if not doc:
@@ -398,7 +406,7 @@ def ask(req: AskRequest):
     sources = query_chunks_with_metadata(req.doc_id, question, top_k=top_k)
 
     if not sources:
-        context = doc["content"][:3000]
+        context = doc["content"][:4000]
     else:
         context = "\n\n---\n\n".join(s["text"] for s in sources)
 
@@ -406,7 +414,12 @@ def ask(req: AskRequest):
     history = document_store.get_chat_history(req.doc_id, session_id=req.session_id)
 
     try:
-        answer = answer_question(context=context, question=question, chat_history=history)
+        answer = answer_question(
+            context=context,
+            question=question,
+            chat_history=history,
+            language=req.language or "auto",
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating answer: {str(e)}")
 
@@ -468,6 +481,7 @@ class QuizRequest(BaseModel):
     num_questions: Optional[int] = 5
     difficulty: Optional[str] = "medium"
     topic: Optional[str] = None
+    language: Optional[str] = "auto"
 
 
 class TargetedDrillRequest(BaseModel):
@@ -475,6 +489,7 @@ class TargetedDrillRequest(BaseModel):
     topic: str
     level: Optional[str] = "beginner"
     num_questions: Optional[int] = 3
+    language: Optional[str] = "auto"
 
 
 class RecordResultItem(BaseModel):
@@ -501,6 +516,7 @@ def generate_quiz_endpoint(req: QuizRequest):
             num_questions=req.num_questions or 5,
             difficulty=req.difficulty or "medium",
             topic=req.topic,
+            language=req.language or "auto",
         )
         return {
             "doc_id": req.doc_id,
@@ -581,6 +597,7 @@ def generate_targeted_drill_endpoint(req: TargetedDrillRequest):
             topic=req.topic,
             level=req.level or "beginner",
             num_questions=req.num_questions or 3,
+            language=req.language or "auto",
         )
         return {
             "doc_id": req.doc_id,
@@ -597,6 +614,7 @@ def generate_targeted_drill_endpoint(req: TargetedDrillRequest):
 class FlashcardsRequest(BaseModel):
     doc_id: str
     count: Optional[int] = 8
+    language: Optional[str] = "auto"
 
 
 @app.post("/api/flashcards")
@@ -607,7 +625,11 @@ def generate_flashcards_endpoint(req: FlashcardsRequest):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     try:
-        cards = generate_flashcards(text=doc["content"], count=req.count or 8)
+        cards = generate_flashcards(
+            text=doc["content"],
+            count=req.count or 8,
+            language=req.language or "auto",
+        )
         return {
             "doc_id": req.doc_id,
             "filename": doc["filename"],
@@ -625,6 +647,7 @@ def generate_flashcards_endpoint(req: FlashcardsRequest):
 
 class MindmapRequest(BaseModel):
     doc_id: str
+    language: Optional[str] = "auto"
 
 
 @app.post("/api/mindmap")
@@ -635,7 +658,10 @@ def generate_mindmap_endpoint(req: MindmapRequest):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     try:
-        mermaid_code = generate_mindmap(text=doc["content"])
+        mermaid_code = generate_mindmap(
+            text=doc["content"],
+            language=req.language or "auto",
+        )
         return {
             "doc_id": req.doc_id,
             "filename": doc["filename"],
@@ -653,6 +679,7 @@ def generate_mindmap_endpoint(req: MindmapRequest):
 class CheatsheetRequest(BaseModel):
     doc_id: str
     focus: Optional[str] = "comprehensive"  # 'comprehensive', 'commands', 'formulas_definitions', 'exam_cram'
+    language: Optional[str] = "auto"
 
 
 @app.post("/api/cheatsheet")
@@ -663,7 +690,11 @@ def generate_cheatsheet_endpoint(req: CheatsheetRequest):
         raise HTTPException(status_code=404, detail="Document not found.")
 
     try:
-        data = generate_cheatsheet(text=doc["content"], focus=req.focus or "comprehensive")
+        data = generate_cheatsheet(
+            text=doc["content"],
+            focus=req.focus or "comprehensive",
+            language=req.language or "auto",
+        )
         return {
             "doc_id": req.doc_id,
             "filename": doc["filename"],

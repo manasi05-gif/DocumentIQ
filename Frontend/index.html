@@ -94,12 +94,9 @@
         </button>
       </div>
 
-      <!-- Multilingual Language Selector (Auto, English, Hindi, Marathi) -->
-      <div id="languageSelector" class="flex items-center bg-dark-surface border border-dark-border rounded-lg p-0.5 text-xs shadow-sm" title="Select Output Language">
-        <button type="button" data-lang="auto" class="lang-btn px-2 py-1 rounded font-medium transition-all bg-brand-600 text-white shadow-sm" title="Auto-Detect (Hindi / Marathi / English)">🌐 Auto</button>
-        <button type="button" data-lang="en" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="English">EN</button>
-        <button type="button" data-lang="hi" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="हिन्दी (Hindi)">हिन्दी</button>
-        <button type="button" data-lang="mr" class="lang-btn px-2 py-1 rounded font-medium transition-all text-slate-400 hover:text-slate-200" title="मराठी (Marathi)">मराठी</button>
+      <!-- Multilingual Language Indicator -->
+      <div id="languageSelector" class="flex items-center bg-dark-surface border border-dark-border rounded-lg p-0.5 text-xs shadow-sm" title="Automatic Language Detection (Hindi, Marathi, English)">
+        <button type="button" data-lang="auto" class="lang-btn px-2.5 py-1 rounded font-medium transition-all bg-brand-600 text-white shadow-sm" title="Auto-Detect (Hindi / Marathi / English)">🌐 Auto</button>
       </div>
 
       <div class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-medium">
@@ -342,26 +339,13 @@
         <!-- Chat Input Bar with Microphone & Quick Helper Chips -->
         <div class="p-4 border-t border-dark-border bg-dark-card">
           <!-- Quick Study Helpers Bar -->
-          <div class="max-w-4xl mx-auto mb-2.5 flex items-center justify-between text-xs px-1 overflow-x-auto gap-2">
-            <div class="flex items-center space-x-1.5 flex-shrink-0">
+          <!-- Stream Indicator -->
+          <div class="max-w-4xl mx-auto mb-2 flex items-center text-xs px-1">
+            <div class="flex items-center space-x-1.5">
               <span class="text-[11px] text-slate-400 font-medium">Stream:</span>
               <button type="button" id="activeDomainBadge" class="px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-brand-300 font-semibold text-[11px] flex items-center space-x-1 transition-all" title="Click to view stream switcher">
                 <span id="activeDomainIcon">🎓</span>
                 <span id="activeDomainName">General Academic</span>
-              </button>
-            </div>
-            <div class="flex items-center space-x-1.5 flex-shrink-0">
-              <button type="button" id="feynmanBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-amber-300 hover:text-amber-200 transition-all flex items-center space-x-1 text-[11px]" title="Explain using simple everyday analogies (Feynman Technique)">
-                <span>💡</span><span>Explain Simply</span>
-              </button>
-              <button type="button" id="quickBulletBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-cyan-300 hover:text-cyan-200 transition-all flex items-center space-x-1 text-[11px]" title="Get a 3-bullet takeaway summary">
-                <span>📝</span><span>3 Bullets</span>
-              </button>
-              <button type="button" id="quickExamTrapsBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-rose-300 hover:text-rose-200 transition-all flex items-center space-x-1 text-[11px]" title="Uncover common exam traps & confusing points">
-                <span>⚠️</span><span>Exam Traps</span>
-              </button>
-              <button type="button" id="quickQuizMeBtn" class="quick-helper-btn px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-purple-300 hover:text-purple-200 transition-all flex items-center space-x-1 text-[11px]" title="Test me with 1 challenging practice MCQ">
-                <span>🧪</span><span>Quiz Me</span>
               </button>
             </div>
           </div>
@@ -1500,6 +1484,6 @@
     <span id="toastMsg">Notification message</span>
   </div>
 
-  <script src="/static/app.js?v=17.0"></script>
+  <script src="/static/app.js?v=18.0"></script>
 </body>
 </html>

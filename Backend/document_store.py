@@ -349,6 +349,7 @@ def save_document(
         "chunk_count": chunk_count,
         "page_count": page_count,
         "preview": preview,
+        "content": content,
         "created_at": created_at,
         "user_id": user_id,
     }

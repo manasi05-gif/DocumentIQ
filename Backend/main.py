@@ -2,7 +2,7 @@ import os
 import sys
 import uuid
 import re
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -252,6 +252,7 @@ async def upload_document(
 
     return {
         **doc_info,
+        "content": text,
         "message": f"Successfully indexed '{file.filename}' with {len(chunks)} chunks across {page_count} pages.",
     }
 

@@ -635,29 +635,38 @@ function getIDB() {
   });
 }
 
-async function idbSaveDocument(doc, userEmail = null) {
-  try {
-    const db = await getIDB();
-    if (!db || !doc || !doc.id) return;
-    const email = (userEmail || (state.currentUser ? state.currentUser.email : localStorage.getItem('doc_saved_email')) || 'guest').toLowerCase().trim();
-    const tx = db.transaction('documents', 'readwrite');
-    const store = tx.objectStore('documents');
+function idbSaveDocument(doc, userEmail = null) {
+  return new Promise(async (resolve) => {
+    try {
+      const db = await getIDB();
+      if (!db || !doc || !doc.id) return resolve();
+      const email = (userEmail || (state.currentUser ? state.currentUser.email : localStorage.getItem('doc_saved_email')) || 'guest').toLowerCase().trim();
+      const tx = db.transaction('documents', 'readwrite');
+      const store = tx.objectStore('documents');
 
-    const getReq = store.get(doc.id);
-    getReq.onsuccess = () => {
-      const existing = getReq.result;
-      const merged = {
-        ...existing,
-        ...doc,
-        content: doc.content || (existing ? existing.content : '') || doc.preview || '',
-        user_email: email !== 'guest' ? email : (existing && existing.user_email !== 'guest' ? existing.user_email : 'guest'),
-        cached_at: new Date().toISOString(),
+      const getReq = store.get(doc.id);
+      getReq.onsuccess = () => {
+        const existing = getReq.result;
+        let contentToSave = doc.content;
+        if (!contentToSave || (existing && existing.content && existing.content.length > contentToSave.length)) {
+          contentToSave = (existing && existing.content) ? existing.content : (doc.preview || '');
+        }
+        const merged = {
+          ...existing,
+          ...doc,
+          content: contentToSave,
+          user_email: email !== 'guest' ? email : (existing && existing.user_email !== 'guest' ? existing.user_email : 'guest'),
+          cached_at: new Date().toISOString(),
+        };
+        store.put(merged);
       };
-      store.put(merged);
-    };
-  } catch (err) {
-    console.warn('idbSaveDocument error:', err);
-  }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch (err) {
+      console.warn('idbSaveDocument error:', err);
+      resolve();
+    }
+  });
 }
 
 async function idbGetDocuments(userEmail = null) {
@@ -869,7 +878,7 @@ async function idbGetMessages(sessionId) {
 }
 
 async function autoRestoreDocumentsToBackend(cachedDocs) {
-  if (!cachedDocs || cachedDocs.length === 0) return;
+  if (!cachedDocs || cachedDocs.length === 0) return false;
 
   try {
     const payload = [];
@@ -905,7 +914,7 @@ async function autoRestoreDocumentsToBackend(cachedDocs) {
       });
     }
 
-    if (payload.length === 0) return;
+    if (payload.length === 0) return false;
 
     const res = await fetch('/api/documents/restore', {
       method: 'POST',
@@ -919,11 +928,94 @@ async function autoRestoreDocumentsToBackend(cachedDocs) {
     if (res.ok) {
       const data = await res.json();
       console.log(`Auto-restored ${data.restored_documents || 0} documents to backend.`);
+      return true;
+    } else {
+      console.warn('Auto-restore request returned status:', res.status);
+      return false;
     }
   } catch (err) {
     console.warn('Auto-restore to backend warning:', err);
+    return false;
   }
 }
+
+/**
+ * Auto-restores a specific active document from IndexedDB or state memory to backend SQLite.
+ * Runs seamlessly whenever a 404 is detected due to a container restart.
+ */
+async function autoRestoreActiveDocument(docId) {
+  try {
+    if (!docId) return false;
+    let targetDoc = (state.activeDoc && state.activeDoc.id === docId) ? state.activeDoc : null;
+    if (!targetDoc) {
+      targetDoc = (state.documents || []).find((d) => d.id === docId);
+    }
+    const allCached = await idbGetDocuments();
+    const idbDoc = (allCached || []).find((d) => d.id === docId);
+    if (idbDoc) {
+      targetDoc = { ...targetDoc, ...idbDoc };
+    }
+
+    if (!targetDoc || (!targetDoc.content && !targetDoc.preview)) {
+      console.warn('[Auto-Heal] Cannot restore doc: no content found in cache for', docId);
+      return false;
+    }
+
+    const ok = await autoRestoreDocumentsToBackend([targetDoc]);
+    if (ok) {
+      // In background, sync other cached documents so user's full library is re-indexed on backend
+      const remainingDocs = (allCached || []).filter((d) => d.id !== docId && (d.content || d.preview));
+      if (remainingDocs.length > 0) {
+        autoRestoreDocumentsToBackend(remainingDocs).catch(() => {});
+      }
+    }
+    return ok;
+  } catch (err) {
+    console.error('[Auto-Heal] Failed to restore document:', err);
+    return false;
+  }
+}
+
+/**
+ * Universal auto-healing fetch wrapper:
+ * Automatically includes auth headers, and if a 404 (Document not found) is returned
+ * due to Render free-tier spinning down / container restart, it restores the document from
+ * IndexedDB and seamlessly retries the request without failing for the user.
+ */
+async function fetchWithDocAutoHeal(url, options = {}, docId = null) {
+  let targetDocId = docId || state.activeDocId;
+  if (!targetDocId && options.body && typeof options.body === 'string') {
+    try {
+      const parsed = JSON.parse(options.body);
+      if (parsed.doc_id) targetDocId = parsed.doc_id;
+    } catch (e) {}
+  }
+  if (!targetDocId && typeof url === 'string') {
+    const match = url.match(/\/api\/documents\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) targetDocId = match[1];
+  }
+
+  const optHeaders = options.headers || {};
+  options.headers = {
+    ...getAuthHeaders(),
+    ...optHeaders,
+  };
+
+  let res = await fetch(url, options);
+
+  // If 404 and targetDocId is known, auto-restore the document and retry once!
+  if (res.status === 404 && targetDocId) {
+    console.warn(`[Auto-Heal] 404 detected on ${url} for doc ${targetDocId}. Attempting auto-restore from IndexedDB...`);
+    const restored = await autoRestoreActiveDocument(targetDocId);
+    if (restored) {
+      console.log(`[Auto-Heal] Auto-restored doc ${targetDocId}. Retrying request to ${url}...`);
+      res = await fetch(url, options);
+    }
+  }
+
+  return res;
+}
+
 
 // Authentication Logic
 async function initAuth() {
@@ -1881,12 +1973,16 @@ async function uploadFile(file) {
 
     // Immediately cache in IndexedDB with full content so it survives any server restart or logout
     try {
-      const detailRes = await fetch(`/api/documents/${newDoc.id}`);
-      if (detailRes.ok) {
-        const fullDoc = await detailRes.json();
-        await idbSaveDocument(fullDoc);
-      } else {
+      if (newDoc && newDoc.content) {
         await idbSaveDocument(newDoc);
+      } else {
+        const detailRes = await fetch(`/api/documents/${newDoc.id}`, { headers: getAuthHeaders() });
+        if (detailRes.ok) {
+          const fullDoc = await detailRes.json();
+          await idbSaveDocument(fullDoc);
+        } else {
+          await idbSaveDocument(newDoc);
+        }
       }
     } catch (e) {
       await idbSaveDocument(newDoc);
@@ -2078,10 +2174,16 @@ async function selectDocument(docId) {
 
   try {
     let doc = null;
+    let needsRestore = false;
     try {
-      const res = await fetch(`/api/documents/${docId}`);
+      const res = await fetch(`/api/documents/${docId}`, { headers: getAuthHeaders() });
       if (res.ok) {
         doc = await res.json();
+        if (doc && doc.content) {
+          idbSaveDocument(doc);
+        }
+      } else if (res.status === 404) {
+        needsRestore = true;
       }
     } catch (e) {
       console.warn('Network issue fetching document details, will check local storage:', e);
@@ -2092,6 +2194,11 @@ async function selectDocument(docId) {
       doc = (localDocs || []).find((d) => d.id === docId);
     }
     if (!doc) throw new Error('Document details not found');
+
+    if (needsRestore && (doc.content || doc.preview)) {
+      console.log(`[Auto-Heal] Document ${docId} missing on server (restart). Auto-restoring now...`);
+      autoRestoreDocumentsToBackend([doc]);
+    }
 
     state.activeDoc = doc;
     idbSaveDocument(doc);
@@ -2227,7 +2334,7 @@ async function fetchChatSessions(docId, preferredSessionId = null) {
   }
 
   try {
-    const res = await fetch(`/api/documents/${docId}/sessions`);
+    const res = await fetchWithDocAutoHeal(`/api/documents/${docId}/sessions`, {}, docId);
     if (!res.ok) throw new Error('Failed to load chat sessions');
     const sessions = await res.json();
 
@@ -2291,11 +2398,11 @@ async function handleNewChat(showToastNotification = true) {
   }
 
   try {
-    const res = await fetch(`/api/documents/${state.activeDocId}/sessions`, {
+    const res = await fetchWithDocAutoHeal(`/api/documents/${state.activeDocId}/sessions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: 'New Chat' }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) throw new Error('Failed to create new chat session');
     const newSession = await res.json();
@@ -2637,7 +2744,7 @@ async function loadChatHistory(docId, sessionId = null) {
     : `/api/documents/${docId}/chat`;
 
   try {
-    const res = await fetch(url);
+    const res = await fetchWithDocAutoHeal(url, {}, docId);
     if (!res.ok) throw new Error('Failed to load chat history');
     const messages = await res.json();
 
@@ -2720,7 +2827,7 @@ async function handleSendMessage(e) {
   if (sendBtn) sendBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/ask', {
+    const res = await fetchWithDocAutoHeal('/api/ask', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2730,7 +2837,7 @@ async function handleSendMessage(e) {
         top_k: 4,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       let errorMsg = `Server error (${res.status})`;
@@ -2916,7 +3023,7 @@ async function handleGenerateSummary() {
   if (generateSummaryBtn) generateSummaryBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/summarize', {
+    const res = await fetchWithDocAutoHeal('/api/summarize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2924,7 +3031,7 @@ async function handleGenerateSummary() {
         summary_type: state.summaryType,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();
@@ -3044,7 +3151,7 @@ function switchStudySubTab(subTab) {
 async function fetchDocumentTopics(docId) {
   if (!docId || !quizTopicSelect) return;
   try {
-    const res = await fetch(`/api/documents/${docId}/topics`);
+    const res = await fetchWithDocAutoHeal(`/api/documents/${docId}/topics`, {}, docId);
     if (!res.ok) return;
     const data = await res.json();
     const topics = data.topics || [];
@@ -3075,7 +3182,7 @@ async function fetchDocumentTopics(docId) {
 async function fetchTopicMastery(docId) {
   if (!docId) return;
   try {
-    const res = await fetch(`/api/documents/${docId}/mastery`);
+    const res = await fetchWithDocAutoHeal(`/api/documents/${docId}/mastery`, {}, docId);
     if (!res.ok) return;
     const data = await res.json();
     state.topicMastery = data;
@@ -3120,7 +3227,7 @@ async function handleStartQuiz() {
   if (startQuizBtn) startQuizBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/quiz', {
+    const res = await fetchWithDocAutoHeal('/api/quiz', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3130,7 +3237,7 @@ async function handleStartQuiz() {
         topic: selectedTopic,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();
@@ -3341,11 +3448,11 @@ async function finishQuizAndShowDiagnostics() {
       level: r.level,
     }));
 
-    const res = await fetch(`/api/documents/${state.activeDocId}/mastery/record`, {
+    const res = await fetchWithDocAutoHeal(`/api/documents/${state.activeDocId}/mastery/record`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ results: payload }),
-    });
+    }, state.activeDocId);
 
     if (res.ok) {
       const data = await res.json();
@@ -3535,7 +3642,7 @@ async function startTargetedDrill(topic, level = 'beginner') {
   }
 
   try {
-    const res = await fetch('/api/quiz/targeted-drill', {
+    const res = await fetchWithDocAutoHeal('/api/quiz/targeted-drill', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3545,7 +3652,7 @@ async function startTargetedDrill(topic, level = 'beginner') {
         num_questions: 3,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();
@@ -3843,7 +3950,7 @@ async function openTopicRadarModal() {
 
   // Fetch fresh mastery
   try {
-    const res = await fetch(`/api/documents/${state.activeDocId}/mastery`);
+    const res = await fetchWithDocAutoHeal(`/api/documents/${state.activeDocId}/mastery`, {}, state.activeDocId);
     if (!res.ok) throw new Error('Failed to load mastery data');
     const profile = await res.json();
     state.topicMastery = profile;
@@ -3969,7 +4076,7 @@ async function handleStartFlashcards() {
   if (startFlashcardsBtn) startFlashcardsBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/flashcards', {
+    const res = await fetchWithDocAutoHeal('/api/flashcards', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -3977,7 +4084,7 @@ async function handleStartFlashcards() {
         count: count,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();
@@ -4063,7 +4170,7 @@ async function handleStartCheatsheet() {
   if (startCheatsheetBtn) startCheatsheetBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/cheatsheet', {
+    const res = await fetchWithDocAutoHeal('/api/cheatsheet', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -4071,7 +4178,7 @@ async function handleStartCheatsheet() {
         focus: focus,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();
@@ -4433,14 +4540,14 @@ async function handleGenerateMindmap() {
   if (generateMindmapBtn) generateMindmapBtn.disabled = true;
 
   try {
-    const res = await fetch('/api/mindmap', {
+    const res = await fetchWithDocAutoHeal('/api/mindmap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         doc_id: state.activeDocId,
         language: state.activeLanguage,
       }),
-    });
+    }, state.activeDocId);
 
     if (!res.ok) {
       const err = await res.json();

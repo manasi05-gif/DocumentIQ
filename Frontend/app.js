@@ -1230,24 +1230,39 @@ function switchAcademicDomain(domainId, showNotification = true) {
 
 function renderQuickQuestions(domainId) {
   if (!quickQuestionsContainer) return;
-  const domain = ACADEMIC_DOMAINS[domainId] || ACADEMIC_DOMAINS.general;
   quickQuestionsContainer.innerHTML = '';
 
-  domain.questions.forEach((q) => {
+  const defaultPrompts = [
+    { title: 'Summarize Key Takeaways', prompt: 'Give me a 5-bullet high-yield summary of this document.', icon: 'sparkles' },
+    { title: 'Explain Core Concepts', prompt: 'Explain the most important concepts from this document in simple terms.', icon: 'help-circle' },
+    { title: 'Important Exam Questions', prompt: 'What are the most likely questions and answers from this document?', icon: 'check-circle-2' },
+    { title: 'Key Definitions & Terms', prompt: 'List all major terms and their definitions found in these notes.', icon: 'bookmark' },
+  ];
+
+  defaultPrompts.forEach((p) => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className =
-      'quick-q-btn px-3 py-1.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border hover:border-brand-500/40 text-xs text-slate-300 hover:text-white transition-all text-left shadow-sm';
-    btn.textContent = q;
+      'quick-q-btn p-3 rounded-xl bg-dark-surface/50 hover:bg-dark-hover border border-dark-border/80 hover:border-brand-500/40 text-left transition-all group flex items-start space-x-2.5';
+    btn.innerHTML = `
+      <div class="w-7 h-7 rounded-lg bg-dark-bg flex items-center justify-center flex-shrink-0 text-brand-400 group-hover:scale-105 transition-transform mt-0.5">
+        <i data-lucide="${p.icon}" class="w-3.5 h-3.5"></i>
+      </div>
+      <div>
+        <p class="text-xs font-semibold text-slate-200 group-hover:text-brand-300 transition-colors">${escapeHtml(p.title)}</p>
+        <p class="text-[11px] text-slate-400 mt-0.5 line-clamp-1">${escapeHtml(p.prompt)}</p>
+      </div>
+    `;
     btn.addEventListener('click', () => {
-      const cleanPrompt = q.replace(/^[^\w\s]+/, '').trim();
       if (chatInput) {
-        chatInput.value = cleanPrompt;
+        chatInput.value = p.prompt;
         chatInput.focus();
       }
       handleSendMessage();
     });
     quickQuestionsContainer.appendChild(btn);
   });
+  initIcons();
 }
 
 // ==========================================
@@ -1951,10 +1966,9 @@ function renderDocumentList() {
         </div>
         <div class="overflow-hidden">
           <p class="text-xs font-semibold truncate ${isActive ? 'text-white' : 'text-slate-200'}">${escapeHtml(doc.filename)}</p>
-          <div class="flex items-center space-x-2 text-[10px] text-slate-500 mt-0.5 font-mono">
-            <span>${doc.chunk_count} chunks</span>
-            <span>•</span>
+          <div class="flex items-center space-x-1.5 text-[10px] text-slate-500 mt-0.5">
             <span>${formatBytes(doc.file_size)}</span>
+            ${doc.word_count ? `<span>•</span><span>${(doc.word_count).toLocaleString()} words</span>` : ''}
           </div>
         </div>
       </div>

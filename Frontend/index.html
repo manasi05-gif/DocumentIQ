@@ -76,11 +76,7 @@
         <i data-lucide="sparkles" class="w-4 h-4 sm:w-5 sm:h-5 text-white"></i>
       </div>
       <div>
-        <div class="flex items-center space-x-1.5 sm:space-x-2">
-          <h1 class="font-bold text-base sm:text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">DocumentIQ</h1>
-          <span class="text-[9px] sm:text-[10px] uppercase font-semibold px-1.5 sm:px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">Pro AI</span>
-        </div>
-        <p class="text-[11px] text-slate-400 hidden sm:block">Intelligent Q&A, Study Hub, Mind Maps, Voice & Exports</p>
+        <h1 class="font-bold text-base sm:text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">DocumentIQ</h1>
       </div>
     </div>
 
@@ -135,23 +131,25 @@
     <!-- LEFT SIDEBAR: Document Library & Uploader -->
     <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-xs sm:max-w-sm md:w-80 lg:w-96 flex-shrink-0 border-r border-dark-border bg-dark-card flex flex-col h-full md:h-[calc(100vh-4rem)] md:relative md:z-auto transition-transform duration-300 ease-in-out -translate-x-full md:translate-x-0 shadow-2xl md:shadow-none">
       
-      <!-- Upload Dropzone Card -->
-      <div class="p-3.5 sm:p-4 border-b border-dark-border">
+      <!-- Upload Action Card -->
+      <div class="p-3 sm:p-3.5 border-b border-dark-border">
         <input type="file" id="fileInput" class="hidden" accept=".pdf,.docx,.txt,.md,.markdown,.csv,.json">
-        <div id="dropzone" class="border-2 border-dashed border-dark-border hover:border-brand-500/50 hover:bg-brand-500/5 rounded-2xl p-4 sm:p-5 text-center cursor-pointer transition-all duration-200 group">
-          <div class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-dark-surface group-hover:bg-brand-500/20 text-brand-400 flex items-center justify-center mx-auto mb-2.5 sm:mb-3 transition-colors">
-            <i data-lucide="upload-cloud" class="w-5 h-5 sm:w-6 sm:h-6"></i>
+        <div id="dropzone" class="border border-dashed border-dark-border/80 hover:border-brand-500/60 hover:bg-brand-500/5 rounded-xl p-3 text-center cursor-pointer transition-all duration-200 group flex items-center justify-center space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-dark-surface group-hover:bg-brand-500/20 text-brand-400 flex items-center justify-center transition-colors flex-shrink-0">
+            <i data-lucide="upload-cloud" class="w-4 h-4"></i>
           </div>
-          <p class="text-xs sm:text-sm font-semibold text-slate-200 group-hover:text-brand-300">Click to upload or drag & drop</p>
-          <p class="text-[11px] text-slate-400 mt-1">PDF, DOCX, TXT, MD, CSV, JSON</p>
-          
-          <!-- Upload Progress -->
-          <div id="uploadProgress" class="hidden mt-3">
-            <div class="w-full bg-dark-surface rounded-full h-1.5 overflow-hidden">
-              <div id="progressBar" class="bg-brand-500 h-1.5 rounded-full w-0 transition-all duration-300"></div>
-            </div>
-            <p id="uploadStatusText" class="text-[11px] text-slate-400 mt-1.5">Processing and indexing chunks...</p>
+          <div class="text-left">
+            <p class="text-xs font-semibold text-slate-200 group-hover:text-brand-300">Upload Document</p>
+            <p class="text-[10px] text-slate-400">PDF, Word, or Text notes</p>
           </div>
+        </div>
+        
+        <!-- Upload Progress -->
+        <div id="uploadProgress" class="hidden mt-2.5">
+          <div class="w-full bg-dark-surface rounded-full h-1.5 overflow-hidden">
+            <div id="progressBar" class="bg-brand-500 h-1.5 rounded-full w-0 transition-all duration-300"></div>
+          </div>
+          <p id="uploadStatusText" class="text-[10px] text-slate-400 mt-1">Processing...</p>
         </div>
       </div>
 
@@ -180,28 +178,21 @@
       </div>
 
       <!-- Document Quick Stats (Bottom Sidebar) -->
-      <div id="sidebarStats" class="p-4 border-t border-dark-border bg-dark-surface/50 text-xs text-slate-400 hidden">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-slate-300 font-semibold">Active Document Stats</span>
-          <button id="viewRawTextBtn" class="text-brand-400 hover:text-brand-300 underline text-[11px]">Open Reader</button>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-[11px]">
-          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
-            <span class="text-slate-500 block">Words</span>
-            <span id="statWords" class="text-slate-200 font-semibold font-mono">0</span>
+      <div id="sidebarStats" class="px-3.5 py-2.5 border-t border-dark-border bg-dark-surface/40 text-[11px] text-slate-400 hidden">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-1.5 text-slate-400">
+            <span id="statWords" class="text-slate-200 font-medium">0</span>
+            <span>words</span>
+            <span class="text-slate-600">•</span>
+            <span id="statReadTime" class="text-slate-300">0m</span>
+            <span class="text-slate-600">•</span>
+            <span id="statSize" class="text-slate-400">0 KB</span>
+            <span id="statChunks" class="hidden">0</span>
           </div>
-          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
-            <span class="text-slate-500 block">Chunks</span>
-            <span id="statChunks" class="text-slate-200 font-semibold font-mono">0</span>
-          </div>
-          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
-            <span class="text-slate-500 block">Reading Time</span>
-            <span id="statReadTime" class="text-slate-200 font-semibold font-mono">0m</span>
-          </div>
-          <div class="bg-dark-card p-2 rounded-lg border border-dark-border/50">
-            <span class="text-slate-500 block">File Size</span>
-            <span id="statSize" class="text-slate-200 font-semibold font-mono">0 KB</span>
-          </div>
+          <button id="viewRawTextBtn" class="text-brand-400 hover:text-brand-300 font-medium flex items-center space-x-1" title="Open full reader view">
+            <i data-lucide="book-open" class="w-3.5 h-3.5"></i>
+            <span>Read</span>
+          </button>
         </div>
       </div>
     </aside>
@@ -288,73 +279,39 @@
         <div id="chatMessages" class="flex-1 overflow-y-auto p-6 space-y-6">
           
           <!-- Welcome Prompt when no chat yet -->
-          <div id="chatWelcome" class="max-w-3xl mx-auto my-auto text-center py-8 px-4 sm:px-6">
-            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-brand-600/30 to-purple-500/20 border border-brand-500/30 flex items-center justify-center mx-auto mb-3 text-brand-400">
-              <i data-lucide="graduation-cap" class="w-7 h-7"></i>
+          <div id="chatWelcome" class="max-w-2xl mx-auto my-auto text-center py-10 px-4 sm:px-6">
+            <div class="w-12 h-12 rounded-2xl bg-brand-500/10 border border-brand-500/20 flex items-center justify-center mx-auto mb-4 text-brand-400">
+              <i data-lucide="sparkles" class="w-6 h-6"></i>
             </div>
-            <h2 class="text-2xl font-bold text-white mb-1.5">Universal AI Study & Document Hub</h2>
-            <p class="text-xs sm:text-sm text-slate-400 max-w-lg mx-auto mb-5 leading-relaxed">
-              Custom-tailored for students across all disciplines — Medical, Law, Commerce, STEM, Humanities & General Studies.
+            <h2 class="text-xl sm:text-2xl font-bold text-white mb-2">What would you like to know?</h2>
+            <p class="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6 leading-relaxed">
+              Ask any question about your document or choose a starter prompt below:
             </p>
 
-            <!-- ACADEMIC DOMAIN / STREAM SELECTOR -->
-            <div class="mb-5 bg-dark-card/90 border border-dark-border/80 rounded-2xl p-3 shadow-lg">
-              <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-2 flex items-center justify-center space-x-1.5">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5 text-brand-400"></i>
-                <span>Choose Your Stream / Field:</span>
-              </div>
-              <div class="flex flex-wrap justify-center gap-1.5" id="domainSelectorGroup">
-                <button data-domain="general" class="domain-pill-btn active px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5">
-                  <span>🎓</span><span>General Academic</span>
-                </button>
-                <button data-domain="medical" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
-                  <span>🧬</span><span>Medical & Bio</span>
-                </button>
-                <button data-domain="law" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
-                  <span>⚖️</span><span>Law & Judiciary</span>
-                </button>
-                <button data-domain="commerce" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
-                  <span>📊</span><span>Commerce & CA</span>
-                </button>
-                <button data-domain="stem" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
-                  <span>🔬</span><span>STEM & Engineering</span>
-                </button>
-                <button data-domain="humanities" class="domain-pill-btn px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center space-x-1.5 bg-dark-surface hover:bg-dark-hover text-slate-300 border-dark-border">
-                  <span>📚</span><span>Humanities & UPSC</span>
-                </button>
-              </div>
-            </div>
+            <!-- Hidden Domain Selector for backwards compatibility -->
+            <div id="domainSelectorGroup" class="hidden"></div>
 
-            <!-- DOMAIN ADAPTIVE QUICK QUESTIONS -->
-            <div class="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-2.5">
-              High-Yield Quick Prompts:
-            </div>
-            <div class="flex flex-wrap justify-center gap-2 max-w-xl mx-auto" id="quickQuestions">
-              <!-- Dynamically populated by app.js based on domain -->
+            <!-- Clean Starter Prompts Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-lg mx-auto text-left" id="quickQuestions">
+              <!-- Dynamically populated by app.js -->
             </div>
           </div>
 
         </div>
 
-        <!-- Chat Input Bar with Microphone & Quick Helper Chips -->
+        <!-- Chat Input Bar with Microphone -->
         <div class="p-4 border-t border-dark-border bg-dark-card">
-          <!-- Quick Study Helpers Bar -->
-          <!-- Stream Indicator -->
-          <div class="max-w-4xl mx-auto mb-2 flex items-center text-xs px-1">
-            <div class="flex items-center space-x-1.5">
-              <span class="text-[11px] text-slate-400 font-medium">Stream:</span>
-              <button type="button" id="activeDomainBadge" class="px-2.5 py-1 rounded-lg bg-dark-surface hover:bg-dark-hover border border-dark-border text-brand-300 font-semibold text-[11px] flex items-center space-x-1 transition-all" title="Click to view stream switcher">
-                <span id="activeDomainIcon">🎓</span>
-                <span id="activeDomainName">General Academic</span>
-              </button>
-            </div>
+          <!-- Hidden active domain badge for JS safety -->
+          <div id="activeDomainBadge" class="hidden">
+            <span id="activeDomainIcon">🎓</span>
+            <span id="activeDomainName">General Academic</span>
           </div>
 
           <form id="chatForm" class="max-w-4xl mx-auto relative flex items-end bg-dark-surface border border-dark-border rounded-2xl focus-within:border-brand-500/60 transition-all shadow-lg">
             <textarea
               id="chatInput"
               rows="1"
-              placeholder="Ask a question in English or Hinglish... (or click mic to speak)"
+              placeholder="Ask a question about your document... (or click mic to speak)"
               class="w-full bg-transparent px-4 py-3.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none max-h-36 overflow-y-auto"
             ></textarea>
             
@@ -1484,6 +1441,6 @@
     <span id="toastMsg">Notification message</span>
   </div>
 
-  <script src="/static/app.js?v=20.0"></script>
+  <script src="/static/app.js?v=21.0"></script>
 </body>
 </html>

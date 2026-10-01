@@ -470,9 +470,7 @@ def update_session_endpoint(session_id: str, req: UpdateSessionRequest):
 @app.delete("/api/sessions/{session_id}")
 def delete_session_endpoint(session_id: str):
     """Deletes a specific chat session and its conversation history."""
-    success = document_store.delete_chat_session(session_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Chat session not found.")
+    document_store.delete_chat_session(session_id)
     return {"status": "ok", "message": "Chat session deleted successfully."}
 
 

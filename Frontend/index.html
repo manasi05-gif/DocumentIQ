@@ -1043,6 +1043,10 @@
           </div>
         </div>
         <div class="flex items-center space-x-2">
+          <button id="clearAllPastChatsBtn" class="px-2.5 py-1.5 rounded-xl border border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs flex items-center space-x-1 transition-all" title="Delete all conversations for this document">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span class="hidden sm:inline">Delete All</span>
+          </button>
           <button id="modalNewChatBtn" class="px-3 py-1.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs flex items-center space-x-1 transition-all shadow-sm">
             <i data-lucide="plus" class="w-3.5 h-3.5"></i>
             <span>New Chat</span>
@@ -1441,6 +1445,6 @@
     <span id="toastMsg">Notification message</span>
   </div>
 
-  <script src="/static/app.js?v=21.0"></script>
+  <script src="/static/app.js?v=22.0"></script>
 </body>
 </html>

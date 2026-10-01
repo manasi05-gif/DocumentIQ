@@ -282,6 +282,7 @@ const totalSessionsCount = document.getElementById('totalSessionsCount');
 const pastChatsModal = document.getElementById('pastChatsModal');
 const pastChatsDocName = document.getElementById('pastChatsDocName');
 const modalNewChatBtn = document.getElementById('modalNewChatBtn');
+const clearAllPastChatsBtn = document.getElementById('clearAllPastChatsBtn');
 const closePastChatsModalBtn = document.getElementById('closePastChatsModalBtn');
 const sessionSearchInput = document.getElementById('sessionSearchInput');
 const pastChatsList = document.getElementById('pastChatsList');
@@ -764,16 +765,65 @@ async function idbDeleteSession(sessionId) {
   try {
     const db = await getIDB();
     if (!db || !sessionId) return;
-    const tx = db.transaction(['sessions', 'messages'], 'readwrite');
-    tx.objectStore('sessions').delete(sessionId);
-    const msgStore = tx.objectStore('messages');
-    const msgIdx = msgStore.index('session_id');
-    const msgReq = msgIdx.getAllKeys(sessionId);
-    msgReq.onsuccess = () => {
-      (msgReq.result || []).forEach(k => msgStore.delete(k));
-    };
+    return new Promise((resolve) => {
+      const tx = db.transaction(['sessions', 'messages'], 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => {
+        console.warn('idbDeleteSession tx error:', tx.error);
+        resolve(false);
+      };
+
+      tx.objectStore('sessions').delete(sessionId);
+
+      const msgStore = tx.objectStore('messages');
+      const msgIdx = msgStore.index('session_id');
+      const msgReq = msgIdx.openKeyCursor(IDBKeyRange.only(sessionId));
+      msgReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          msgStore.delete(cursor.primaryKey);
+          cursor.continue();
+        }
+      };
+    });
   } catch (err) {
     console.warn('idbDeleteSession error:', err);
+  }
+}
+
+async function idbDeleteAllSessions(docId) {
+  try {
+    const db = await getIDB();
+    if (!db || !docId) return;
+    return new Promise((resolve) => {
+      const tx = db.transaction(['sessions', 'messages'], 'readwrite');
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+
+      const sessStore = tx.objectStore('sessions');
+      const sessIdx = sessStore.index('doc_id');
+      const sessReq = sessIdx.openKeyCursor(IDBKeyRange.only(docId));
+      sessReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          sessStore.delete(cursor.primaryKey);
+          cursor.continue();
+        }
+      };
+
+      const msgStore = tx.objectStore('messages');
+      const msgIdx = msgStore.index('doc_id');
+      const msgReq = msgIdx.openKeyCursor(IDBKeyRange.only(docId));
+      msgReq.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (cursor) {
+          msgStore.delete(cursor.primaryKey);
+          cursor.continue();
+        }
+      };
+    });
+  } catch (err) {
+    console.warn('idbDeleteAllSessions error:', err);
   }
 }
 
@@ -1363,6 +1413,7 @@ function setupEventListeners() {
   // Chat Sessions Controls & Drawer
   if (newChatBtn) newChatBtn.addEventListener('click', () => handleNewChat(true));
   if (modalNewChatBtn) modalNewChatBtn.addEventListener('click', () => handleNewChat(true));
+  if (clearAllPastChatsBtn) clearAllPastChatsBtn.addEventListener('click', handleDeleteAllSessions);
   if (togglePastChatsBtn) togglePastChatsBtn.addEventListener('click', openPastChatsModal);
   if (viewAllChatsLink) viewAllChatsLink.addEventListener('click', openPastChatsModal);
   if (closePastChatsModalBtn) closePastChatsModalBtn.addEventListener('click', closePastChatsModal);
@@ -2476,29 +2527,37 @@ async function handleRenameSession(sessionId, currentTitle) {
   }
 }
 
-async function handleDeleteSession(sessionId, title) {
+async function handleDeleteSession(sessionId, title, skipConfirm = false) {
   if (!sessionId) return;
   const displayTitle = title || 'this conversation';
-  if (!confirm(`Are you sure you want to delete "${displayTitle}"?\nAll messages in this conversation will be permanently removed.`)) {
-    return;
+  if (!skipConfirm) {
+    if (!confirm(`Are you sure you want to delete "${displayTitle}"?\nAll messages in this conversation will be permanently removed.`)) {
+      return;
+    }
   }
 
   try {
+    // 1. Delete from IndexedDB immediately
     await idbDeleteSession(sessionId);
-    const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
-    if (!res.ok) throw new Error('Failed to delete conversation');
 
-    // Remove from state.sessions
+    // 2. Call backend (safe against network or 404 errors)
+    try {
+      await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend delete error (ignoring if offline/local):', e);
+    }
+
+    // 3. Remove from state.sessions
     state.sessions = state.sessions.filter((s) => s.id !== sessionId);
 
-    // Update badge counts
+    // 4. Update badge counts
     const count = state.sessions.length;
     if (sessionCountBadge) sessionCountBadge.textContent = count;
     if (totalSessionsCount) totalSessionsCount.textContent = count;
 
     showToast('Conversation deleted', 'success');
 
-    // If deleted session was the currently active one
+    // 5. If deleted session was the currently active one
     if (state.activeSessionId === sessionId) {
       if (state.sessions.length > 0) {
         await selectChatSession(state.sessions[0].id);
@@ -2511,6 +2570,46 @@ async function handleDeleteSession(sessionId, title) {
   } catch (err) {
     console.error('Error deleting session:', err);
     showToast('Failed to delete conversation: ' + err.message, 'error');
+  }
+}
+
+async function handleDeleteAllSessions() {
+  if (!state.activeDocId) return;
+  if (!confirm('Are you sure you want to delete ALL conversations for this document?\nAll chat history will be permanently removed.')) {
+    return;
+  }
+
+  try {
+    // 1. Delete all sessions & messages for this document from IndexedDB
+    await idbDeleteAllSessions(state.activeDocId);
+
+    // 2. Call backend to clear all chat for this document
+    try {
+      await fetch(`/api/documents/${state.activeDocId}/chat`, { method: 'DELETE' });
+    } catch (e) {
+      console.warn('Backend clear all chat error:', e);
+    }
+
+    // 3. Clear local state
+    state.sessions = [];
+    state.activeSessionId = null;
+    state.activeSessionTitle = 'New Chat';
+
+    // 4. Update UI
+    if (sessionCountBadge) sessionCountBadge.textContent = '0';
+    if (totalSessionsCount) totalSessionsCount.textContent = '0';
+    if (sessionMessageCount) sessionMessageCount.textContent = '0 msgs';
+    if (activeSessionTitle) activeSessionTitle.textContent = 'New Chat';
+
+    resetChatView();
+    closePastChatsModal();
+    showToast('All conversations deleted', 'success');
+
+    // 5. Start a fresh clean chat session
+    await handleNewChat(false);
+  } catch (err) {
+    console.error('Error deleting all sessions:', err);
+    showToast('Failed to delete all conversations: ' + err.message, 'error');
   }
 }
 
@@ -2786,13 +2885,16 @@ function createAssistantPlaceholder() {
 }
 
 async function handleClearChat() {
-  if (!state.activeDocId || !state.activeSessionId) return;
+  if (!state.activeDocId || !state.activeSessionId) {
+    showToast('No active conversation to delete.', 'info');
+    return;
+  }
   const currentTitle = state.activeSessionTitle || 'this conversation';
   if (!confirm(`Are you sure you want to delete "${currentTitle}"?\nYour other saved conversations for this document will remain safe.`)) {
     return;
   }
 
-  await handleDeleteSession(state.activeSessionId, currentTitle);
+  await handleDeleteSession(state.activeSessionId, currentTitle, true);
 }
 
 function scrollChatToBottom() {

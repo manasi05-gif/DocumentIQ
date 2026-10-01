@@ -192,7 +192,7 @@ def create_user(name: str, email: str, password: str) -> Dict[str, Any]:
     if not password or len(password) < 6:
         raise ValueError("Password must be at least 6 characters")
 
-    user_id = str(uuid.uuid4())
+    user_id = hashlib.sha256(f"user:{email_clean}".encode()).hexdigest()[:32]
     pw_hash = hash_password(password)
     created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -208,6 +208,13 @@ def create_user(name: str, email: str, password: str) -> Dict[str, Any]:
         conn.commit()
 
     return {"id": user_id, "name": name_clean, "email": email_clean, "created_at": created_at}
+
+
+def claim_unassigned_documents(user_id: str):
+    """Associates documents uploaded without an account to the newly authenticated user."""
+    with get_connection() as conn:
+        conn.execute("UPDATE documents SET user_id = ? WHERE user_id IS NULL", (user_id,))
+        conn.commit()
 
 
 def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
@@ -436,6 +443,27 @@ def create_chat_session(doc_id: str, title: Optional[str] = None) -> Dict[str, A
     }
 
 
+def restore_chat_session(
+    session_id: str,
+    doc_id: str,
+    title: str = "New Chat",
+    created_at: Optional[str] = None,
+    updated_at: Optional[str] = None,
+):
+    """Idempotently restores a chat session from client cache."""
+    c_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    u_at = updated_at or c_at
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO chat_sessions (id, doc_id, title, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (session_id, doc_id, title, c_at, u_at),
+        )
+        conn.commit()
+
+
 def list_chat_sessions(doc_id: str) -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.execute(
@@ -556,6 +584,29 @@ def add_chat_message(
         "created_at": created_at,
         "session_title": session.get("title", "New Chat"),
     }
+
+
+def restore_chat_message(
+    msg_id: str,
+    doc_id: str,
+    session_id: Optional[str],
+    role: str,
+    message: str,
+    sources: Optional[List[Dict[str, Any]]] = None,
+    created_at: Optional[str] = None,
+):
+    """Idempotently restores a chat message from client cache."""
+    c_at = created_at or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    sources_json = json.dumps(sources) if sources else None
+    with get_connection() as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO chat_history (id, doc_id, session_id, role, message, sources_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (msg_id, doc_id, session_id, role, message, sources_json, c_at),
+        )
+        conn.commit()
 
 
 def get_chat_history(doc_id: str, session_id: Optional[str] = None) -> List[Dict[str, Any]]:

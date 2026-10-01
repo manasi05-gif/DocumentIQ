@@ -127,6 +127,7 @@ def register_user(req: RegisterRequest):
     """Creates a new user account and returns a login session token."""
     try:
         user = document_store.create_user(req.name, req.email, req.password)
+        document_store.claim_unassigned_documents(user["id"])
         token = document_store.create_session(user["id"])
         return {
             "status": "ok",
@@ -162,6 +163,7 @@ def login_user(req: LoginRequest):
         default_name = req.name.strip() if req.name and req.name.strip() else email_clean.split("@")[0].capitalize()
         user = document_store.create_user(default_name, email_clean, req.password)
 
+    document_store.claim_unassigned_documents(user["id"])
     token = document_store.create_session(user["id"])
     return {
         "status": "ok",
@@ -284,6 +286,94 @@ def delete_document_endpoint(doc_id: str, request: Request):
     document_store.delete_document(doc_id, user_id=user_id)
     return {"status": "ok", "message": f"Document '{doc['filename']}' deleted successfully."}
 
+
+class RestoreDocumentItem(BaseModel):
+    id: str
+    filename: str
+    file_type: Optional[str] = ".txt"
+    file_size: Optional[int] = 0
+    content: str
+    chunk_count: Optional[int] = 0
+    page_count: Optional[int] = 1
+    summary: Optional[str] = None
+    summary_type: Optional[str] = "bullet"
+    created_at: Optional[str] = None
+    sessions: Optional[List[Dict[str, Any]]] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+
+
+class RestoreDataRequest(BaseModel):
+    documents: List[RestoreDocumentItem]
+
+
+@app.post("/api/documents/restore")
+def restore_documents_endpoint(req: RestoreDataRequest, request: Request):
+    """
+    Restores client-persisted documents and chat histories to SQLite & vector search.
+    Guarantees zero data loss across Render free-tier restarts.
+    """
+    user = get_user_from_request(request)
+    user_id = user["id"] if user else None
+
+    restored_count = 0
+    for doc in req.documents:
+        existing = document_store.get_document(doc.id)
+        if not existing:
+            # Re-insert document
+            document_store.save_document(
+                doc_id=doc.id,
+                filename=doc.filename,
+                file_type=doc.file_type or ".txt",
+                file_size=doc.file_size or len(doc.content.encode("utf-8")),
+                content=doc.content,
+                chunk_count=doc.chunk_count or 1,
+                page_count=doc.page_count or 1,
+                user_id=user_id,
+            )
+            # Re-index chunks in BM25
+            chunks = chunk_text(doc.content)
+            add_chunks(doc.id, chunks)
+
+            if doc.summary:
+                document_store.update_summary(doc.id, doc.summary, summary_type=doc.summary_type or "bullet")
+
+            restored_count += 1
+        else:
+            if user_id and not existing.get("user_id"):
+                with document_store.get_connection() as conn:
+                    conn.execute("UPDATE documents SET user_id = ? WHERE id = ?", (user_id, doc.id))
+                    conn.commit()
+            if doc.content:
+                existing_chunks = query_chunks(doc.id, "test", top_k=1)
+                if not existing_chunks:
+                    chunks = chunk_text(doc.content)
+                    add_chunks(doc.id, chunks)
+
+        # Restore sessions
+        if doc.sessions:
+            for s in doc.sessions:
+                document_store.restore_chat_session(
+                    session_id=s["id"],
+                    doc_id=doc.id,
+                    title=s.get("title", "New Chat"),
+                    created_at=s.get("created_at"),
+                    updated_at=s.get("updated_at"),
+                )
+
+        # Restore messages
+        if doc.messages:
+            for m in doc.messages:
+                document_store.restore_chat_message(
+                    msg_id=m["id"],
+                    doc_id=doc.id,
+                    session_id=m.get("session_id"),
+                    role=m.get("role", "user"),
+                    message=m.get("message", ""),
+                    sources=m.get("sources"),
+                    created_at=m.get("created_at"),
+                )
+
+    return {"status": "ok", "restored_documents": restored_count}
 
 
 # ==========================================

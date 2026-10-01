@@ -590,6 +590,291 @@ function getAuthHeaders(headers = {}) {
   return headers;
 }
 
+// ==========================================
+// Persistent Local Storage (IndexedDB)
+// Ensures documents and chat history are NEVER lost across
+// server restarts, redeployments, or logout/sign-in cycles.
+// ==========================================
+const IDB_NAME = 'DocumentIQ_OfflineStore';
+const IDB_VERSION = 1;
+let idbInstance = null;
+
+function getIDB() {
+  if (idbInstance) return Promise.resolve(idbInstance);
+  return new Promise((resolve) => {
+    if (!window.indexedDB) {
+      console.warn('IndexedDB not supported in this browser.');
+      return resolve(null);
+    }
+    const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('documents')) {
+        const store = db.createObjectStore('documents', { keyPath: 'id' });
+        store.createIndex('user_email', 'user_email', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('sessions')) {
+        const store = db.createObjectStore('sessions', { keyPath: 'id' });
+        store.createIndex('doc_id', 'doc_id', { unique: false });
+      }
+      if (!db.objectStoreNames.contains('messages')) {
+        const store = db.createObjectStore('messages', { keyPath: 'id' });
+        store.createIndex('session_id', 'session_id', { unique: false });
+        store.createIndex('doc_id', 'doc_id', { unique: false });
+      }
+    };
+    req.onsuccess = () => {
+      idbInstance = req.result;
+      resolve(idbInstance);
+    };
+    req.onerror = () => {
+      console.warn('IndexedDB open error:', req.error);
+      resolve(null);
+    };
+  });
+}
+
+async function idbSaveDocument(doc, userEmail = null) {
+  try {
+    const db = await getIDB();
+    if (!db || !doc || !doc.id) return;
+    const email = (userEmail || (state.currentUser ? state.currentUser.email : localStorage.getItem('doc_saved_email')) || 'guest').toLowerCase().trim();
+    const tx = db.transaction('documents', 'readwrite');
+    const store = tx.objectStore('documents');
+
+    const getReq = store.get(doc.id);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      const merged = {
+        ...existing,
+        ...doc,
+        content: doc.content || (existing ? existing.content : '') || doc.preview || '',
+        user_email: email !== 'guest' ? email : (existing && existing.user_email !== 'guest' ? existing.user_email : 'guest'),
+        cached_at: new Date().toISOString(),
+      };
+      store.put(merged);
+    };
+  } catch (err) {
+    console.warn('idbSaveDocument error:', err);
+  }
+}
+
+async function idbGetDocuments(userEmail = null) {
+  try {
+    const db = await getIDB();
+    if (!db) return [];
+    const email = (userEmail || (state.currentUser ? state.currentUser.email : localStorage.getItem('doc_saved_email')) || 'guest').toLowerCase().trim();
+    return new Promise((resolve) => {
+      const tx = db.transaction('documents', 'readonly');
+      const store = tx.objectStore('documents');
+      const req = store.getAll();
+      req.onsuccess = () => {
+        const all = req.result || [];
+        const filtered = all.filter(d => !d.user_email || d.user_email === email || d.user_email === 'guest' || email === 'guest');
+        filtered.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        resolve(filtered);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch (err) {
+    console.warn('idbGetDocuments error:', err);
+    return [];
+  }
+}
+
+async function idbClaimGuestDocuments(userEmail) {
+  try {
+    const db = await getIDB();
+    if (!db || !userEmail) return;
+    const cleanEmail = userEmail.toLowerCase().trim();
+    const tx = db.transaction('documents', 'readwrite');
+    const store = tx.objectStore('documents');
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const all = req.result || [];
+      for (const doc of all) {
+        if (!doc.user_email || doc.user_email === 'guest') {
+          doc.user_email = cleanEmail;
+          store.put(doc);
+        }
+      }
+    };
+  } catch (err) {
+    console.warn('idbClaimGuestDocuments error:', err);
+  }
+}
+
+async function idbDeleteDocument(docId) {
+  try {
+    const db = await getIDB();
+    if (!db || !docId) return;
+    const tx = db.transaction(['documents', 'sessions', 'messages'], 'readwrite');
+    tx.objectStore('documents').delete(docId);
+    const sessStore = tx.objectStore('sessions');
+    const sessIdx = sessStore.index('doc_id');
+    const sessReq = sessIdx.getAllKeys(docId);
+    sessReq.onsuccess = () => {
+      (sessReq.result || []).forEach(k => sessStore.delete(k));
+    };
+    const msgStore = tx.objectStore('messages');
+    const msgIdx = msgStore.index('doc_id');
+    const msgReq = msgIdx.getAllKeys(docId);
+    msgReq.onsuccess = () => {
+      (msgReq.result || []).forEach(k => msgStore.delete(k));
+    };
+  } catch (err) {
+    console.warn('idbDeleteDocument error:', err);
+  }
+}
+
+async function idbSaveSession(session) {
+  try {
+    const db = await getIDB();
+    if (!db || !session || !session.id) return;
+    const tx = db.transaction('sessions', 'readwrite');
+    tx.objectStore('sessions').put(session);
+  } catch (err) {
+    console.warn('idbSaveSession error:', err);
+  }
+}
+
+async function idbGetSessions(docId) {
+  try {
+    const db = await getIDB();
+    if (!db || !docId) return [];
+    return new Promise((resolve) => {
+      const tx = db.transaction('sessions', 'readonly');
+      const store = tx.objectStore('sessions');
+      const idx = store.index('doc_id');
+      const req = idx.getAll(docId);
+      req.onsuccess = () => {
+        const list = req.result || [];
+        list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        resolve(list);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch (err) {
+    console.warn('idbGetSessions error:', err);
+    return [];
+  }
+}
+
+async function idbDeleteSession(sessionId) {
+  try {
+    const db = await getIDB();
+    if (!db || !sessionId) return;
+    const tx = db.transaction(['sessions', 'messages'], 'readwrite');
+    tx.objectStore('sessions').delete(sessionId);
+    const msgStore = tx.objectStore('messages');
+    const msgIdx = msgStore.index('session_id');
+    const msgReq = msgIdx.getAllKeys(sessionId);
+    msgReq.onsuccess = () => {
+      (msgReq.result || []).forEach(k => msgStore.delete(k));
+    };
+  } catch (err) {
+    console.warn('idbDeleteSession error:', err);
+  }
+}
+
+async function idbSaveMessage(msg, docId, sessionId) {
+  try {
+    const db = await getIDB();
+    if (!db || !docId || !sessionId) return;
+    const tx = db.transaction('messages', 'readwrite');
+    tx.objectStore('messages').put({
+      id: msg.id || ('loc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)),
+      doc_id: docId,
+      session_id: sessionId,
+      role: msg.role,
+      message: msg.message,
+      sources: msg.sources || null,
+      created_at: msg.created_at || new Date().toISOString(),
+    });
+  } catch (err) {
+    console.warn('idbSaveMessage error:', err);
+  }
+}
+
+async function idbGetMessages(sessionId) {
+  try {
+    const db = await getIDB();
+    if (!db || !sessionId) return [];
+    return new Promise((resolve) => {
+      const tx = db.transaction('messages', 'readonly');
+      const store = tx.objectStore('messages');
+      const idx = store.index('session_id');
+      const req = idx.getAll(sessionId);
+      req.onsuccess = () => {
+        const msgs = req.result || [];
+        msgs.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+        resolve(msgs);
+      };
+      req.onerror = () => resolve([]);
+    });
+  } catch (err) {
+    console.warn('idbGetMessages error:', err);
+    return [];
+  }
+}
+
+async function autoRestoreDocumentsToBackend(cachedDocs) {
+  if (!cachedDocs || cachedDocs.length === 0) return;
+
+  try {
+    const payload = [];
+    for (const doc of cachedDocs) {
+      if (!doc || !doc.id) continue;
+      const textContent = doc.content || doc.preview || '';
+      if (!textContent) continue;
+
+      const sessions = await idbGetSessions(doc.id);
+      let messages = [];
+      if (sessions && sessions.length > 0) {
+        for (const s of sessions) {
+          const sMsgs = await idbGetMessages(s.id);
+          if (sMsgs && sMsgs.length > 0) {
+            messages = messages.concat(sMsgs);
+          }
+        }
+      }
+
+      payload.push({
+        id: doc.id,
+        filename: doc.filename,
+        file_type: doc.file_type || '.txt',
+        file_size: doc.file_size || textContent.length,
+        content: textContent,
+        chunk_count: doc.chunk_count || 1,
+        page_count: doc.page_count || 1,
+        summary: doc.summary || null,
+        summary_type: doc.summary_type || 'bullet',
+        created_at: doc.created_at || new Date().toISOString(),
+        sessions: sessions && sessions.length > 0 ? sessions : null,
+        messages: messages && messages.length > 0 ? messages : null,
+      });
+    }
+
+    if (payload.length === 0) return;
+
+    const res = await fetch('/api/documents/restore', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ documents: payload }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      console.log(`Auto-restored ${data.restored_documents || 0} documents to backend.`);
+    }
+  } catch (err) {
+    console.warn('Auto-restore to backend warning:', err);
+  }
+}
+
 // Authentication Logic
 async function initAuth() {
   // Pre-fill remembered email
@@ -724,6 +1009,7 @@ async function handleLogin(e) {
     localStorage.setItem('doc_saved_name', data.user.name);
     localStorage.setItem('doc_saved_email', email);
 
+    await idbClaimGuestDocuments(email);
     updateUserUI();
     showToast(`Welcome back, ${data.user.name}!`, 'success');
     await fetchDocuments();
@@ -787,6 +1073,7 @@ async function handleRegister(e) {
     localStorage.setItem('doc_saved_name', data.user.name);
     localStorage.setItem('doc_saved_email', email);
 
+    await idbClaimGuestDocuments(email);
     updateUserUI();
     showToast(`Welcome to DocumentIQ, ${data.user.name}!`, 'success');
     await fetchDocuments();
@@ -1526,6 +1813,19 @@ async function uploadFile(file) {
     const newDoc = await res.json();
     showToast(`Successfully indexed "${file.name}"!`, 'success');
 
+    // Immediately cache in IndexedDB with full content so it survives any server restart or logout
+    try {
+      const detailRes = await fetch(`/api/documents/${newDoc.id}`);
+      if (detailRes.ok) {
+        const fullDoc = await detailRes.json();
+        await idbSaveDocument(fullDoc);
+      } else {
+        await idbSaveDocument(newDoc);
+      }
+    } catch (e) {
+      await idbSaveDocument(newDoc);
+    }
+
     state.activeDocId = newDoc.id;
     await fetchDocuments();
     await selectDocument(newDoc.id);
@@ -1547,24 +1847,64 @@ async function uploadFile(file) {
 }
 
 async function fetchDocuments() {
+  // 1. Immediately read from IndexedDB to show documents with 0ms delay!
+  const localCachedDocs = await idbGetDocuments();
+  if (localCachedDocs && localCachedDocs.length > 0 && state.documents.length === 0) {
+    state.documents = localCachedDocs;
+    renderDocumentList();
+    const targetDoc = state.activeDocId && localCachedDocs.find((d) => d.id === state.activeDocId);
+    const docIdToSelect = targetDoc ? targetDoc.id : localCachedDocs[0].id;
+    selectDocument(docIdToSelect);
+  }
+
   try {
     const res = await fetch('/api/documents', {
       headers: getAuthHeaders(),
     });
     if (!res.ok) throw new Error('Failed to load documents');
-    const docs = await res.json();
-    state.documents = docs;
+    let docs = await res.json();
+
+    // 2. If backend has fewer documents than local cache (e.g. server restart or container wipe), auto-restore to backend!
+    if (localCachedDocs && localCachedDocs.length > 0) {
+      const serverDocIds = new Set((docs || []).map(d => d.id));
+      const missingOnServer = localCachedDocs.filter(d => !serverDocIds.has(d.id));
+
+      if (missingOnServer.length > 0) {
+        console.log(`Auto-restoring ${missingOnServer.length} cached documents to backend...`);
+        await autoRestoreDocumentsToBackend(missingOnServer);
+
+        // Refetch from server after restore completes
+        const refetchRes = await fetch('/api/documents', { headers: getAuthHeaders() });
+        if (refetchRes.ok) {
+          docs = await refetchRes.json();
+        }
+      }
+    }
+
+    state.documents = (docs && docs.length > 0) ? docs : (localCachedDocs || []);
     renderDocumentList();
 
-    if (docs.length > 0) {
-      const targetDoc = state.activeDocId && docs.find((d) => d.id === state.activeDocId);
-      const docIdToSelect = targetDoc ? targetDoc.id : docs[0].id;
+    // 3. Cache documents into IndexedDB
+    for (const doc of state.documents) {
+      idbSaveDocument(doc);
+    }
+
+    if (state.documents.length > 0) {
+      const targetDoc = state.activeDocId && state.documents.find((d) => d.id === state.activeDocId);
+      const docIdToSelect = targetDoc ? targetDoc.id : state.documents[0].id;
       await selectDocument(docIdToSelect);
     } else {
       await selectDocument(null);
     }
   } catch (err) {
     console.error('Fetch docs error:', err);
+    if (localCachedDocs && localCachedDocs.length > 0) {
+      state.documents = localCachedDocs;
+      renderDocumentList();
+      const targetDoc = state.activeDocId && localCachedDocs.find((d) => d.id === state.activeDocId);
+      const docIdToSelect = targetDoc ? targetDoc.id : localCachedDocs[0].id;
+      await selectDocument(docIdToSelect);
+    }
   }
 }
 
@@ -1672,10 +2012,24 @@ async function selectDocument(docId) {
   state.activeDocId = docId;
 
   try {
-    const res = await fetch(`/api/documents/${docId}`);
-    if (!res.ok) throw new Error('Document details not found');
-    const doc = await res.json();
+    let doc = null;
+    try {
+      const res = await fetch(`/api/documents/${docId}`);
+      if (res.ok) {
+        doc = await res.json();
+      }
+    } catch (e) {
+      console.warn('Network issue fetching document details, will check local storage:', e);
+    }
+
+    if (!doc) {
+      const localDocs = await idbGetDocuments();
+      doc = (localDocs || []).find((d) => d.id === docId);
+    }
+    if (!doc) throw new Error('Document details not found');
+
     state.activeDoc = doc;
+    idbSaveDocument(doc);
 
     // Update active badge in navbar
     if (activeDocName) activeDocName.textContent = doc.filename;
@@ -1768,6 +2122,7 @@ async function deleteDocument(docId, filename) {
   }
 
   try {
+    await idbDeleteDocument(docId);
     const res = await fetch(`/api/documents/${docId}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
@@ -1789,11 +2144,38 @@ async function deleteDocument(docId, filename) {
 // ==========================================
 async function fetchChatSessions(docId, preferredSessionId = null) {
   if (!docId) return;
+
+  // Check local cache first for instant display
+  const localSessions = await idbGetSessions(docId);
+  if (localSessions && localSessions.length > 0 && state.sessions.length === 0) {
+    state.sessions = localSessions;
+    const count = state.sessions.length;
+    if (sessionCountBadge) sessionCountBadge.textContent = count;
+    if (totalSessionsCount) totalSessionsCount.textContent = count;
+    const targetSession = preferredSessionId
+      ? state.sessions.find((s) => s.id === preferredSessionId) || state.sessions[0]
+      : state.sessions[0];
+    state.activeSessionId = targetSession.id;
+    state.activeSessionTitle = targetSession.title || 'New Chat';
+    if (activeSessionTitle) activeSessionTitle.textContent = state.activeSessionTitle;
+    await loadChatHistory(docId, targetSession.id);
+  }
+
   try {
     const res = await fetch(`/api/documents/${docId}/sessions`);
     if (!res.ok) throw new Error('Failed to load chat sessions');
     const sessions = await res.json();
-    state.sessions = sessions || [];
+
+    if (sessions && sessions.length > 0) {
+      for (const s of sessions) {
+        idbSaveSession({ ...s, doc_id: docId });
+      }
+      state.sessions = sessions;
+    } else if (localSessions && localSessions.length > 0) {
+      state.sessions = localSessions;
+    } else {
+      state.sessions = [];
+    }
 
     // Update count badges
     const count = state.sessions.length;
@@ -1826,6 +2208,14 @@ async function fetchChatSessions(docId, preferredSessionId = null) {
     await loadChatHistory(docId, targetSession.id);
   } catch (err) {
     console.error('Error fetching chat sessions:', err);
+    if (localSessions && localSessions.length > 0) {
+      state.sessions = localSessions;
+      const targetSession = localSessions[0];
+      state.activeSessionId = targetSession.id;
+      state.activeSessionTitle = targetSession.title || 'New Chat';
+      if (activeSessionTitle) activeSessionTitle.textContent = state.activeSessionTitle;
+      await loadChatHistory(docId, targetSession.id);
+    }
   }
 }
 
@@ -1844,6 +2234,7 @@ async function handleNewChat(showToastNotification = true) {
 
     if (!res.ok) throw new Error('Failed to create new chat session');
     const newSession = await res.json();
+    idbSaveSession({ ...newSession, doc_id: state.activeDocId });
 
     // Insert at front of sessions array
     state.sessions.unshift(newSession);
@@ -2052,7 +2443,10 @@ async function handleRenameSession(sessionId, currentTitle) {
 
     // Update in state.sessions
     const s = state.sessions.find((x) => x.id === sessionId);
-    if (s) s.title = cleanTitle;
+    if (s) {
+      s.title = cleanTitle;
+      idbSaveSession(s);
+    }
 
     // If active session was renamed
     if (state.activeSessionId === sessionId) {
@@ -2076,6 +2470,7 @@ async function handleDeleteSession(sessionId, title) {
   }
 
   try {
+    await idbDeleteSession(sessionId);
     const res = await fetch(`/api/sessions/${sessionId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete conversation');
 
@@ -2107,9 +2502,23 @@ async function handleDeleteSession(sessionId, title) {
 
 async function loadChatHistory(docId, sessionId = null) {
   if (!chatMessages) return;
-  chatMessages.innerHTML = '';
-
   const sid = sessionId || state.activeSessionId;
+
+  // 1. Immediately load and render from IndexedDB for instant 0ms UI display
+  let localMsgs = [];
+  if (sid) {
+    localMsgs = await idbGetMessages(sid);
+    if (localMsgs && localMsgs.length > 0) {
+      chatMessages.innerHTML = '';
+      if (chatWelcome) chatWelcome.classList.add('hidden');
+      localMsgs.forEach((msg) => {
+        appendMessageToChat(msg.role, msg.message);
+      });
+      if (sessionMessageCount) sessionMessageCount.textContent = `${localMsgs.length} msgs`;
+      scrollChatToBottom();
+    }
+  }
+
   const url = sid
     ? `/api/documents/${docId}/chat?session_id=${encodeURIComponent(sid)}`
     : `/api/documents/${docId}/chat`;
@@ -2119,32 +2528,39 @@ async function loadChatHistory(docId, sessionId = null) {
     if (!res.ok) throw new Error('Failed to load chat history');
     const messages = await res.json();
 
-    // Update message count badge on active session bar
-    if (sessionMessageCount) {
-      sessionMessageCount.textContent = `${messages.length} msgs`;
-    }
-
-    // Update message_count in state.sessions
-    if (sid) {
-      const s = state.sessions.find((x) => x.id === sid);
-      if (s) s.message_count = messages.length;
-    }
-
-    if (messages.length === 0) {
+    if (messages && messages.length > 0) {
+      chatMessages.innerHTML = '';
+      if (chatWelcome) chatWelcome.classList.add('hidden');
+      for (const msg of messages) {
+        appendMessageToChat(msg.role, msg.message);
+        idbSaveMessage(msg, docId, sid);
+      }
+      if (sessionMessageCount) {
+        sessionMessageCount.textContent = `${messages.length} msgs`;
+      }
+      if (sid) {
+        const s = state.sessions.find((x) => x.id === sid);
+        if (s) s.message_count = messages.length;
+      }
+      scrollChatToBottom();
+    } else if (localMsgs && localMsgs.length > 0) {
+      if (sessionMessageCount) sessionMessageCount.textContent = `${localMsgs.length} msgs`;
+    } else {
+      chatMessages.innerHTML = '';
+      if (sessionMessageCount) sessionMessageCount.textContent = `0 msgs`;
       if (chatWelcome) {
         chatMessages.appendChild(chatWelcome);
         chatWelcome.classList.remove('hidden');
       }
-      return;
     }
-
-    if (chatWelcome) chatWelcome.classList.add('hidden');
-    messages.forEach((msg) => {
-      appendMessageToChat(msg.role, msg.message);
-    });
-    scrollChatToBottom();
   } catch (err) {
     console.error('Error loading chat:', err);
+    if (!localMsgs || localMsgs.length === 0) {
+      if (chatWelcome) {
+        chatMessages.appendChild(chatWelcome);
+        chatWelcome.classList.remove('hidden');
+      }
+    }
   }
 }
 
@@ -2171,6 +2587,11 @@ async function handleSendMessage(e) {
 
   // Append User Message
   appendMessageToChat('user', question);
+  const userMsg = { id: 'u_' + Date.now(), role: 'user', message: question, created_at: new Date().toISOString() };
+  if (state.activeDocId && state.activeSessionId) {
+    idbSaveMessage(userMsg, state.activeDocId, state.activeSessionId);
+  }
+
   if (chatInput) {
     chatInput.value = '';
     chatInput.style.height = 'auto';
@@ -2227,21 +2648,30 @@ async function handleSendMessage(e) {
       if (activeSessionTitle) activeSessionTitle.textContent = data.session_title;
     }
 
+    const assistantMsg = { id: 'a_' + Date.now(), role: 'assistant', message: data.answer, created_at: new Date().toISOString() };
+    if (state.activeDocId && state.activeSessionId) {
+      idbSaveMessage(assistantMsg, state.activeDocId, state.activeSessionId);
+      idbSaveMessage({ ...userMsg, session_id: state.activeSessionId }, state.activeDocId, state.activeSessionId);
+    }
+
     // Update active session in state.sessions
     let target = state.sessions.find((s) => s.id === state.activeSessionId);
     if (target) {
       target.message_count = (target.message_count || 0) + 2;
       if (data.session_title) target.title = data.session_title;
       if (sessionMessageCount) sessionMessageCount.textContent = `${target.message_count} msgs`;
+      idbSaveSession({ ...target, doc_id: state.activeDocId });
     } else if (data.session_id) {
-      state.sessions.unshift({
+      const newSessObj = {
         id: data.session_id,
         doc_id: state.activeDocId,
         title: data.session_title || 'New Chat',
         message_count: 2,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-      });
+      };
+      state.sessions.unshift(newSessObj);
+      idbSaveSession(newSessObj);
       const count = state.sessions.length;
       if (sessionCountBadge) sessionCountBadge.textContent = count;
       if (totalSessionsCount) totalSessionsCount.textContent = count;
@@ -2392,6 +2822,7 @@ async function handleGenerateSummary() {
     if (state.activeDoc) {
       state.activeDoc.summary = data.summary;
       state.activeDoc.summary_type = data.summary_type;
+      idbSaveDocument(state.activeDoc);
     }
   } catch (err) {
     console.error('Summary error:', err);

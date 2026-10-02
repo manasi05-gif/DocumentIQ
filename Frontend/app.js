@@ -1057,10 +1057,18 @@ function updateUserUI() {
       userProfileArea.classList.remove('hidden');
       userProfileArea.classList.add('flex');
     }
-    if (openAuthModalBtn) openAuthModalBtn.classList.add('hidden');
-    if (userNameDisplay) userNameDisplay.textContent = state.currentUser.name || 'User';
+    if (openAuthModalBtn) {
+      openAuthModalBtn.classList.add('hidden');
+      openAuthModalBtn.classList.remove('flex');
+    }
+    const userEmail = (state.currentUser && state.currentUser.email) || localStorage.getItem('doc_saved_email') || '';
+    const displayName = userEmail || (state.currentUser && state.currentUser.name) || 'User';
+    if (userNameDisplay) {
+      userNameDisplay.textContent = displayName;
+      userNameDisplay.title = userEmail || displayName;
+    }
     if (userAvatar) {
-      const initial = (state.currentUser.name || 'U').trim().charAt(0).toUpperCase();
+      const initial = (displayName || 'U').trim().charAt(0).toUpperCase();
       userAvatar.textContent = initial || 'U';
     }
     if (authModal) authModal.classList.add('hidden');
@@ -1069,7 +1077,10 @@ function updateUserUI() {
       userProfileArea.classList.add('hidden');
       userProfileArea.classList.remove('flex');
     }
-    if (openAuthModalBtn) openAuthModalBtn.classList.remove('hidden');
+    if (openAuthModalBtn) {
+      openAuthModalBtn.classList.remove('hidden');
+      openAuthModalBtn.classList.add('flex');
+    }
     if (authModal && !state.guestMode) {
       authModal.classList.remove('hidden');
     }
